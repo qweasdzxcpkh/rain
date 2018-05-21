@@ -1,0 +1,7 @@
+*.pyc
+*.pyo
+
+/.idea
+/__pycache__
+/dist
+/rain.egg-info
