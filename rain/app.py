@@ -135,7 +135,9 @@ class Rain(object):
 		protocol.send(res.to_bytes())
 
 		for fn in self._after_request_funcs:
-			fn(request, res)
+			r = fn(request, res)
+			if isawaitable(r):
+				await r
 
 	def before_start(self, fn):
 		self._before_start_funcs.append(fn)
