@@ -1,5 +1,0 @@
---index https://pypi.douban.com/simple
-pymysql
-sqlalchemy
-redis
-ujson
