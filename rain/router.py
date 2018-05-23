@@ -78,7 +78,7 @@ class BaseRouter(object):
 
 		return m, _[ind:], prev_m
 
-	def find_handler(self, request):
+	def find_handler(self, request, raise_error=False):
 		view, ps, prev_v = self._find_view(request)
 
 		if isinstance(view, dict):
@@ -103,12 +103,18 @@ class BaseRouter(object):
 		)
 
 		if ps and not instance.ptails:
-			request.parse_error = NotFoundError()
+			if raise_error:
+				raise NotFoundError()
+			else:
+				request.parse_error = NotFoundError()
 			return
 
 		handler = getattr(instance, request.method.lower(), None)
 		if not callable(handler):
-			request.parse_error = MethodNotAllowError()
+			if raise_error:
+				raise MethodNotAllowError()
+			else:
+				request.parse_error = MethodNotAllowError()
 			return
 
 		return handler

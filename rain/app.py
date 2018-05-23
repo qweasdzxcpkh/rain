@@ -107,7 +107,7 @@ class Rain(object):
 			# noinspection PyBroadException
 			try:
 				if handler is None:
-					handler = self.router.find_handler(request)
+					handler = self.router.find_handler(request, raise_error=True)
 
 				for fn in self._before_request_funcs:
 					r = fn(request)
