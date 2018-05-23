@@ -6,7 +6,8 @@ from inspect import isawaitable
 from rain import ascii_logo
 from rain.config import Config
 from rain.router import BaseRouter
-from rain.h2tp import HTTPProtocol, Response
+from rain.clses import Response
+from rain.h2tp import HTTPProtocol
 from rain.error import HTTPError, ServerError
 from rain.utils.color import Color
 
@@ -47,9 +48,9 @@ class Rain(object):
 		self._after_request_funcs = []
 		self.error_handlers = {}
 
-		Config.set('debug', debug)
-		Config.set('host', kwargs['host'])
-		Config.set('port', kwargs['port'])
+		Config.DEBUG = debug
+		Config.HOST = kwargs.get('host')
+		Config.PORT = kwargs.get('port')
 
 	def run(self, use_ascii_logo=True, show_router=False):
 		if self.debug:

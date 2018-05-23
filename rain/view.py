@@ -1,7 +1,8 @@
 from rain.tpl import Tpl
-from rain.h2tp import Request, Response
+from rain.clses import Response, Request
 
 
+# noinspection PyUnusedLocal
 def _reset_to_none(fn):
 	return None
 

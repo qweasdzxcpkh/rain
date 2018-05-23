@@ -1,3 +1,10 @@
+import os
+import sys
+
+__project_path = os.path.dirname(os.getcwd())
+if __project_path not in sys.path:
+	sys.path.insert(0, __project_path)
+
 from rain import Rain
 
 app = Rain(

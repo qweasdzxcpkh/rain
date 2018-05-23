@@ -1,10 +1,9 @@
+import asyncio
+
 from rain.view import BaseView
-from rain.tpl import Tpl
 
 
 class Home(BaseView):
-	tpl_dir_path = r'C:\Users\ztk\Documents\rain\test\tpls'
-
 	def get(self, **kwargs):
 		self.request.cookie.add('name', 'spring', max_age=600)
 
@@ -21,3 +20,12 @@ class Home(BaseView):
 		print(self.request.files)
 
 		return 'OPTIONS'
+
+	async def post(self, **kwargs):
+		await asyncio.sleep(0.5)
+
+		self.request.need_file_md5 = True  # set this, before form parse
+		print(self.request.form)
+		print(self.request.files.get('aaa').md5)
+
+		return 'OK'
