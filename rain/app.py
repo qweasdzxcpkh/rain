@@ -122,6 +122,8 @@ class Rain(object):
 				res = protocol.error(e)
 			except Exception:
 				res = ServerError().make_response()
+				if isawaitable(res):
+					res = await res
 		else:
 			res = parse_error.make_response()
 
