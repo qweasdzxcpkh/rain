@@ -14,5 +14,4 @@ ascii_logo = ASCII_LOGO = '''
 
 desc = DESC = "A simple async http api server."
 
-if not __name__ == '__main__':
-	from .app import Rain
+from .app import Rain
