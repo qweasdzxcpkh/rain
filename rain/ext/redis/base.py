@@ -24,3 +24,7 @@ class RedisProtocol(asyncio.Protocol):
 
 class BaseMix(object):
 	protocol: RedisProtocol = None
+
+
+class RedisError(Exception):
+	pass

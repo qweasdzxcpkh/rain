@@ -69,6 +69,9 @@ def _parse_arrays(data):
 
 		if item[0] == REDIS_BILK:
 			is_bilk = True
+			if int(item[1:]) < 0:
+				_.append(None)
+				is_bilk = False
 			continue
 
 		if item[0] == REDIS_INTEGERS:
