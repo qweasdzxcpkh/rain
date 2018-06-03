@@ -38,7 +38,7 @@ if __name__ == '__main__':
 	loop = asyncio.get_event_loop()
 	loop.set_debug(True)
 
-	r = Redis(host='192.168.0.101', db=2)
+	r = Redis(db=2)
 	r.start()
 
 	print(loop.run_until_complete(r.mget('name', 'price')))
