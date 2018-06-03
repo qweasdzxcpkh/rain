@@ -192,13 +192,3 @@ class Mysql(object):
 
 		if resp.is_auth_switch_request():
 			pass
-
-
-if __name__ == '__main__':
-	loop = asyncio.get_event_loop()
-
-	client = Mysql(host='47.96.1.64', user='root', password='mnbvcxz?123456', database='mysql')
-
-	client.start()
-
-	loop.run_forever()

@@ -32,15 +32,3 @@ class Redis(KeyMix, StringMix, HashMix, ListMix, SetMix):
 
 	async def select(self, db):
 		return await self.protocol.send(b'SELECT', to_bytes(db))
-
-
-if __name__ == '__main__':
-	loop = asyncio.get_event_loop()
-	loop.set_debug(True)
-
-	r = Redis(db=2)
-	r.start()
-
-	print(loop.run_until_complete(r.mget('name', 'price')))
-
-	loop.run_forever()
