@@ -9,16 +9,31 @@ UNSIGNED_INT64_COLUMN = 254
 
 
 class MysqlPacket(BytesIO):
-	def __init__(self, init_bytes):
+	@classmethod
+	def make_packet(cls, data):
+		length = len(data)
+		*o, packet_number = struct.unpack('<HBB', data[:4])
+		head = data[4:5]
+
+		if head == b'\xff':
+			pass
+
+		p_cls = MysqlPacket
+
+		if 1 <= ord(head) <= 250:
+			p_cls = MysqlResultPacket
+		elif head == b'\xfb':
+			p_cls = MysqlLLPacket
+		elif head == b'\xff':
+			p_cls = MysqlErrorPacket
+
+		return p_cls(data[4:], length, packet_number, head)
+
+	def __init__(self, init_bytes, length, packet_number, head):
 		super().__init__(init_bytes)
-		self.length = len(init_bytes)
-
-		self.btrl, self.btrh, self.packet_number = struct.unpack('<HBB', self.read(4))
-
-	def current_head(self):
-		_ = self.read(1)
-		self.seek(self.tell() - 1)
-		return _
+		self.length = length
+		self.packet_number = packet_number
+		self.head = head
 
 	def read_until(self, sign=b'\0'):
 		_ = self.getvalue()
@@ -71,19 +86,27 @@ class MysqlPacket(BytesIO):
 		return self.read(length)
 
 	def is_ok(self):
-		return self.current_head() == b'\0' and self.length >= 7
+		return self.head == b'\0' and self.length >= 7
 
 	def is_eof(self):
-		return self.current_head() == b'\0' and self.length < 9
+		return self.head == b'\0' and self.length < 9
 
 	def is_auth_switch_request(self):
-		return self.current_head() == b'\xfe'
+		return self.head == b'\xfe'
 
-	def is_resultset(self):
-		return 1 <= ord(self.current_head()) <= 250
+	def error_msg(self):
+		pass
 
-	def is_load_local(self):
-		return self.current_head() == b'\xfb'
 
-	def is_error(self):
-		return self.current_head() == b'\xff'
+class MysqlResultPacket(MysqlPacket):
+	pass
+
+
+class MysqlErrorPacket(MysqlPacket):
+	def error_msg(self):
+		self.read(1)
+		return self.read_uint16(), self.read().decode()
+
+
+class MysqlLLPacket(MysqlPacket):
+	pass

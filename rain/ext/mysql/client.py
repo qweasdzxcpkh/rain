@@ -8,8 +8,7 @@ from rain.ext.mysql.base import MysqlProtocol, MysqlPacket
 from rain.ext.mysql.charset import charset_by_id, charset_by_name
 from rain.ext.mysql.constants import CLIENT
 from rain.ext.mysql.utils import int2byte, byte2int
-from rain.ext.mysql.error import OperationError
-
+from rain.ext.mysql.error import MysqlError, OperationError
 
 sha_new = partial(hashlib.new, 'sha1')
 SCRAMBLE_LENGTH = 20
@@ -254,9 +253,7 @@ class Mysql(object):
 			if resp.is_ok():
 				return
 
-			resp.read(1)
-
-			raise OperationError(resp.read_uint16(), resp.read().decode())
+			raise OperationError(resp.error_msg())
 
 		resp.read(2)
 		plugin_name = resp.read_string()
@@ -267,8 +264,9 @@ class Mysql(object):
 			data = _scramble_323(self.password.encode('latin1'), self.salt) + b'\0'
 			auth_packet: MysqlPacket = await self.send_packet(data)
 
-		if auth_packet.is_error():
-			raise OperationError('Auth Error')
+		error = auth_packet.error_msg()
+		if error:
+			raise OperationError('Auth Error {} {}'.format(*error))
 
 	async def _process_auth(self, plugin_name, auth_packet):
 		data = False
@@ -302,4 +300,10 @@ class Mysql(object):
 		prelude = struct.pack('<iB', packet_size, command)
 		self._next_seq_id = 0
 		self.next_seq_id()
-		return await self.protocol.send(prelude + sql, 0)
+
+		packet: MysqlPacket = await self.protocol.send(prelude + sql, 0)
+		error = packet.error_msg()
+		if error:
+			raise MysqlError(*error)
+
+		return packet

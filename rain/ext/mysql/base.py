@@ -72,7 +72,7 @@ class MysqlProtocol(asyncio.Protocol):
 		self.futures.lock_set(0, MysqlFuture(0))
 
 	def data_received(self, data):
-		packet = MysqlPacket(data)
+		packet = MysqlPacket.make_packet(data)
 		pop = self.futures.pop(packet.packet_number)
 		asyncio.get_event_loop().create_task(set_packet(pop, packet))
 
