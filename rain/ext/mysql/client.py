@@ -1,3 +1,4 @@
+import io
 import asyncio
 import struct
 import hashlib
@@ -6,7 +7,9 @@ from functools import partial
 from rain.ext.mysql.base import MysqlProtocol, MysqlPacket
 from rain.ext.mysql.charset import charset_by_id, charset_by_name
 from rain.ext.mysql.constants import CLIENT
-from rain.ext.mysql.utils import int2byte
+from rain.ext.mysql.utils import int2byte, byte2int
+from rain.ext.mysql.error import OperationError
+
 
 sha_new = partial(hashlib.new, 'sha1')
 SCRAMBLE_LENGTH = 20
@@ -52,7 +55,65 @@ def pack_int24(n):
 	return struct.pack('<I', n)[:3]
 
 
+SCRAMBLE_LENGTH_323 = 8
+
+
+def _hash_password_323(password):
+	nr = 1345345333
+	add = 7
+	nr2 = 0x12345671
+
+	# x in py3 is numbers, p27 is chars
+	for c in [byte2int(x) for x in password if x not in (' ', '\t', 32, 9)]:
+		nr ^= (((nr & 63) + add) * c) + (nr << 8) & 0xFFFFFFFF
+		nr2 = (nr2 + ((nr2 << 8) ^ nr)) & 0xFFFFFFFF
+		add = (add + c) & 0xFFFFFFFF
+
+	r1 = nr & ((1 << 31) - 1)  # kill sign bits
+	r2 = nr2 & ((1 << 31) - 1)
+	return struct.pack(">LL", r1, r2)
+
+
+class RandStruct_323(object):
+	def __init__(self, seed1, seed2):
+		self.max_value = 0x3FFFFFFF
+		self.seed1 = seed1 % self.max_value
+		self.seed2 = seed2 % self.max_value
+
+	def my_rnd(self):
+		self.seed1 = (self.seed1 * 3 + self.seed2) % self.max_value
+		self.seed2 = (self.seed1 + self.seed2 + 33) % self.max_value
+		return float(self.seed1) / float(self.max_value)
+
+
+def _scramble_323(password, message):
+	hash_pass = _hash_password_323(password)
+	hash_message = _hash_password_323(message[:SCRAMBLE_LENGTH_323])
+	hash_pass_n = struct.unpack(">LL", hash_pass)
+	hash_message_n = struct.unpack(">LL", hash_message)
+
+	rand_st = RandStruct_323(
+		hash_pass_n[0] ^ hash_message_n[0],
+		hash_pass_n[1] ^ hash_message_n[1]
+	)
+
+	outbuf = io.BytesIO()
+	for _ in range(min(SCRAMBLE_LENGTH_323, len(message))):
+		outbuf.write(int2byte(int(rand_st.my_rnd() * 31) + 64))
+	extra = int2byte(int(rand_st.my_rnd() * 31))
+	out = outbuf.getvalue()
+	outbuf = io.BytesIO()
+	for c in out:
+		outbuf.write(int2byte(byte2int(c) ^ byte2int(extra)))
+	return outbuf.getvalue()
+
+
+MAX_PACKET_LEN = 2 ** 24 - 1
+
+
 class Mysql(object):
+	cursor_class = None
+
 	def __init__(
 			self,
 			host='localhost', port=3306,
@@ -95,12 +156,14 @@ class Mysql(object):
 		self._next_seq_id = 0
 
 	def next_seq_id(self):
-		self._next_seq_id = (self._next_seq_id + 1) % 256
+		_ = (self._next_seq_id + 1) % 256
+		self._next_seq_id = _
+		return _
 
 	def start(self):
 		self.transport, self.protocol = self.loop.run_until_complete(
 			self.loop.create_connection(
-				MysqlProtocol,
+				partial(MysqlProtocol, client=self),
 				host=self.host,
 				port=self.port
 			)
@@ -109,19 +172,16 @@ class Mysql(object):
 		self.loop.run_until_complete(self.get_server_info())
 		self.loop.run_until_complete(self.do_auth())
 
-	async def read(self):
-		packet = await self.protocol.future
+	def close(self):
+		pass
+
+	async def send_packet(self, payload):
 		self.next_seq_id()
-
-		return packet
-
-	async def send(self, payload):
 		data = pack_int24(len(payload)) + int2byte(self._next_seq_id) + payload
-		self.next_seq_id()
-		return await self.protocol.send(data)
+		return await self.protocol.send(data, self._next_seq_id)
 
 	async def get_server_info(self):
-		info: MysqlPacket = await self.read()
+		info: MysqlPacket = await self.protocol.futures.release_get(0)
 
 		self.protocol_version = info.read_uint8()
 		self.server_version = info.read_string().decode('latin1')
@@ -188,7 +248,58 @@ class Mysql(object):
 			name = name.encode('ascii')
 			data += (name + b'\0')
 
-		resp: MysqlPacket = await self.send(data)
+		resp: MysqlPacket = await self.send_packet(data)
 
-		if resp.is_auth_switch_request():
-			pass
+		if not resp.is_auth_switch_request():
+			if resp.is_ok():
+				return
+
+			resp.read(1)
+
+			raise OperationError(resp.read_uint16(), resp.read().decode())
+
+		resp.read(2)
+		plugin_name = resp.read_string()
+
+		if self.server_capabilities & CLIENT.PLUGIN_AUTH and plugin_name is not None:
+			auth_packet: MysqlPacket = await self._process_auth(plugin_name, resp)
+		else:
+			data = _scramble_323(self.password.encode('latin1'), self.salt) + b'\0'
+			auth_packet: MysqlPacket = await self.send_packet(data)
+
+		if auth_packet.is_error():
+			raise OperationError('Auth Error')
+
+	async def _process_auth(self, plugin_name, auth_packet):
+		data = False
+
+		if plugin_name == b'mysql_native_password':
+			data = _scramble(self.password.encode('latin1'), auth_packet.read())
+		elif plugin_name == b'mysql_old_password':
+			data = _scramble_323(self.password.encode('latin1'), auth_packet.read_all()) + b'\0'
+		elif plugin_name == b'mysql_clear_password':
+			data = self.password.encode('latin1') + b'\0'
+		elif plugin_name == b'dialog':
+			auth_packet.read(2)
+			prompt = auth_packet.read()
+			if prompt == b"Password: ":
+				return await self.send_packet(self.password.encode('latin1') + b'\0')
+			else:
+				raise OperationError(2059, 'Auth Plugin: "{}" is not supported'.format(plugin_name))
+
+		if not data:
+			raise OperationError(2059, 'Auth Plugin: "{}" is not supported'.format(plugin_name))
+
+		return await self.send_packet(data)
+
+	async def execute_command(self, command, sql):
+		if isinstance(sql, str):
+			sql = sql.encode(self.encoding)
+		packet_size = len(sql) + 1
+		if packet_size > MAX_PACKET_LEN:
+			raise OperationError("Your sql is too too too too large")
+
+		prelude = struct.pack('<iB', packet_size, command)
+		self._next_seq_id = 0
+		self.next_seq_id()
+		return await self.protocol.send(prelude + sql, 0)

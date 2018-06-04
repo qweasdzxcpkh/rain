@@ -15,6 +15,11 @@ class MysqlPacket(BytesIO):
 
 		self.btrl, self.btrh, self.packet_number = struct.unpack('<HBB', self.read(4))
 
+	def current_head(self):
+		_ = self.read(1)
+		self.seek(self.tell() - 1)
+		return _
+
 	def read_until(self, sign=b'\0'):
 		_ = self.getvalue()
 		c = self.tell()
@@ -66,19 +71,19 @@ class MysqlPacket(BytesIO):
 		return self.read(length)
 
 	def is_ok(self):
-		return self.read(1) == b'\0' and self.length >= 7
+		return self.current_head() == b'\0' and self.length >= 7
 
 	def is_eof(self):
-		return self.read(1) == b'\0' and self.length < 9
+		return self.current_head() == b'\0' and self.length < 9
 
 	def is_auth_switch_request(self):
-		return self.read(1) == b'\xfe'
+		return self.current_head() == b'\xfe'
 
 	def is_resultset(self):
-		return 1 <= ord(self.read(1)) <= 250
+		return 1 <= ord(self.current_head()) <= 250
 
 	def is_load_local(self):
-		return self.read(1) == b'\xfb'
+		return self.current_head() == b'\xfb'
 
 	def is_error(self):
-		return self.read(1) == b'\xff'
+		return self.current_head() == b'\xff'
