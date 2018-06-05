@@ -23,10 +23,10 @@ print(
 packet: MysqlPacket = loop.run_until_complete(
 	client.execute_command(
 		COMMAND.COM_QUERY,
-		"SELECT User FROM user"
+		"SELECT User, Host FROM user"
 	)
 )
 
-print(packet.read())
+print(packet.read_columns())
 
 loop.run_forever()

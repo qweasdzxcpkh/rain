@@ -8,11 +8,22 @@ UNSIGNED_INT24_COLUMN = 253
 UNSIGNED_INT64_COLUMN = 254
 
 
+def _read_length(c):
+	if c < UNSIGNED_CHAR_COLUMN:
+		return c
+	elif c == UNSIGNED_SHORT_COLUMN:
+		return -2
+	elif c == UNSIGNED_INT24_COLUMN:
+		return -3
+	elif c == UNSIGNED_INT64_COLUMN:
+		return -8
+
+
 class MysqlPacket(BytesIO):
 	@classmethod
 	def make_packet(cls, data):
 		length = len(data)
-		*o, packet_number = struct.unpack('<HBB', data[:4])
+		btrl, btrh, packet_number = struct.unpack('<HBB', data[:4])
 		head = data[4:5]
 
 		if head == b'\xff':
@@ -85,6 +96,10 @@ class MysqlPacket(BytesIO):
 			return None
 		return self.read(length)
 
+	def read_struct(self, fmt):
+		s = struct.Struct(fmt)
+		return s.unpack_from(self.read(s.size))
+
 	def is_ok(self):
 		return self.head == b'\0' and self.length >= 7
 
@@ -97,9 +112,75 @@ class MysqlPacket(BytesIO):
 	def error_msg(self):
 		pass
 
+	def read_columns(self):
+		pass
+
+
+class Field(object):
+	def __init__(self, init_bytes):
+		print(init_bytes)
+		unknown = init_bytes[:3]
+		pos = 3
+		end = len(init_bytes) - 1
+
+		result = []
+		read_length = None
+		while len(result) < 6:
+			if pos >= end:
+				break
+
+			if read_length is None:
+				__ = init_bytes[pos: pos + 1]
+				_ = _read_length(ord(__))
+				pos += 1
+
+				if _ == -2:
+					_ = struct.unpack('<H', init_bytes[pos: pos + 2])[0]
+					pos + -2
+				elif _ == -3:
+					_ = struct.unpack('<HB', init_bytes[pos: pos + 3])[0]
+					pos += 3
+				elif _ == -8:
+					_ = struct.unpack('<Q', init_bytes[pos: pos + 8])[0]
+					pos += 8
+
+				read_length = _
+			else:
+				result.append(init_bytes[pos: pos + read_length])
+				pos += read_length
+				read_length = None
+
+		assert len(result) == 6 and pos < end
+
+		self.catalog, self.db, self.table_name, self.org_table, self.name, self.org_name = result
+
+		s = struct.Struct('<xHIBHBxx')
+
+		self.charsetnr, self.length, self.type_code, self.flag, self.scale = s.unpack_from(
+			init_bytes[pos: pos + s.size]
+		)
+
 
 class MysqlResultPacket(MysqlPacket):
-	pass
+	def __init__(self, *args):
+		super().__init__(*args)
+
+		self.field_count = 0
+		self.fields = None
+
+	def read_columns(self):
+		self.field_count = self.read_length_encoded_integer()
+		self.fields = self.read_fields()
+
+	def read_fields(self):
+		_ = []
+
+		for i in range(self.field_count):
+			length = self.read_length_encoded_integer()
+			# i do not know why
+			_.append(Field(self.read(length + 3)))
+
+		return _
 
 
 class MysqlErrorPacket(MysqlPacket):
