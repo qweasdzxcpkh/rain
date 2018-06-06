@@ -1,6 +1,9 @@
 from io import BytesIO
 import struct
 
+from rain.ext.mysql.constants import FIELD_TYPE
+from rain.ext.mysql.converters import TO_STRING
+
 NULL_COLUMN = 251
 UNSIGNED_CHAR_COLUMN = 251
 UNSIGNED_SHORT_COLUMN = 252
@@ -20,11 +23,13 @@ def _read_length(c):
 
 
 class MysqlPacket(BytesIO):
+	def __repr__(self):
+		return '<{} {}>'.format(self.__class__.__name__, self.packet_number)
+
 	@classmethod
-	def make_packet(cls, data):
+	def make_packet(cls, data, expect_length, packet_number):
 		length = len(data)
-		btrl, btrh, packet_number = struct.unpack('<HBB', data[:4])
-		head = data[4:5]
+		head = data[0:1]
 
 		if head == b'\xff':
 			pass
@@ -38,13 +43,22 @@ class MysqlPacket(BytesIO):
 		elif head == b'\xff':
 			p_cls = MysqlErrorPacket
 
-		return p_cls(data[4:], length, packet_number, head)
+		return p_cls(data, expect_length, length, packet_number, head)
 
-	def __init__(self, init_bytes, length, packet_number, head):
+	def __init__(self, init_bytes, expect_length, length, packet_number, head):
 		super().__init__(init_bytes)
+		self.expect_length = expect_length
 		self.length = length
 		self.packet_number = packet_number
 		self.head = head
+
+	def __await__(self):
+		return
+
+	def append(self, bs):
+		self.length += len(bs)
+		super().write(self.getvalue() + bs)
+		self.seek(0)
 
 	def read_until(self, sign=b'\0'):
 		_ = self.getvalue()
@@ -59,7 +73,12 @@ class MysqlPacket(BytesIO):
 
 		return result
 
-	def read_uint8(self):
+	def read_uint8(self, safe=False):
+		if safe:
+			_ = self.read(1)
+			if not _:
+				return None
+			return ord(_)
 		return ord(self.read(1))
 
 	def read_uint16(self):
@@ -77,9 +96,10 @@ class MysqlPacket(BytesIO):
 	def read_string(self):
 		return self.read_until()
 
-	def read_length_encoded_integer(self):
-		c = self.read_uint8()
-		if c == NULL_COLUMN:
+	def read_length_encoded_integer(self, safe=False):
+		c = self.read_uint8(safe=safe)
+
+		if c == NULL_COLUMN or c is None:
 			return None
 		if c < UNSIGNED_CHAR_COLUMN:
 			return c
@@ -90,8 +110,8 @@ class MysqlPacket(BytesIO):
 		elif c == UNSIGNED_INT64_COLUMN:
 			return self.read_uint64()
 
-	def read_length_coded_string(self):
-		length = self.read_length_encoded_integer()
+	def read_length_coded_string(self, safe=False):
+		length = self.read_length_encoded_integer(safe=safe)
 		if length is None:
 			return None
 		return self.read(length)
@@ -104,7 +124,7 @@ class MysqlPacket(BytesIO):
 		return self.head == b'\0' and self.length >= 7
 
 	def is_eof(self):
-		return self.head == b'\0' and self.length < 9
+		return self.head == b'\xfe' and self.length < 9
 
 	def is_auth_switch_request(self):
 		return self.head == b'\xfe'
@@ -112,75 +132,105 @@ class MysqlPacket(BytesIO):
 	def error_msg(self):
 		pass
 
-	def read_columns(self):
+	def read_field(self, coding):
+		pass
+
+	def read_column(self, fields, converters):
 		pass
 
 
+TEXT_TYPES = {
+	FIELD_TYPE.BIT,
+	FIELD_TYPE.BLOB,
+	FIELD_TYPE.LONG_BLOB,
+	FIELD_TYPE.MEDIUM_BLOB,
+	FIELD_TYPE.STRING,
+	FIELD_TYPE.TINY_BLOB,
+	FIELD_TYPE.VAR_STRING,
+	FIELD_TYPE.VARCHAR,
+	FIELD_TYPE.GEOMETRY,
+	FIELD_TYPE.JSON
+}
+
+
 class Field(object):
-	def __init__(self, init_bytes):
-		print(init_bytes)
-		unknown = init_bytes[:3]
-		pos = 3
-		end = len(init_bytes) - 1
+	__slots__ = (
+		'catalog', 'db', 'table_name',
+		'name', 'org_table', 'org_name',
+		'charsetnr', 'length', 'flags',
+		'type_code', 'scale', 'coding'
+	)
 
-		result = []
-		read_length = None
-		while len(result) < 6:
-			if pos >= end:
-				break
+	def __init__(self):
+		self.catalog = None
+		self.db = None
+		self.table_name = None
+		self.org_table = None
+		self.name = None
+		self.org_name = None
 
-			if read_length is None:
-				__ = init_bytes[pos: pos + 1]
-				_ = _read_length(ord(__))
-				pos += 1
+		self.charsetnr = None
+		self.length = None
+		self.type_code = None
+		self.flags = None
+		self.scale = None
 
-				if _ == -2:
-					_ = struct.unpack('<H', init_bytes[pos: pos + 2])[0]
-					pos + -2
-				elif _ == -3:
-					_ = struct.unpack('<HB', init_bytes[pos: pos + 3])[0]
-					pos += 3
-				elif _ == -8:
-					_ = struct.unpack('<Q', init_bytes[pos: pos + 8])[0]
-					pos += 8
+		self.coding = None
 
-				read_length = _
-			else:
-				result.append(init_bytes[pos: pos + read_length])
-				pos += read_length
-				read_length = None
+	def __repr__(self):
+		return '<Field {}.{}.{}>'.format(self.db, self.table_name, self.name)
 
-		assert len(result) == 6 and pos < end
+	def decode(self, raw, converters: dict):
+		type_code = self.type_code
+		converter = converters.get(type_code)
 
-		self.catalog, self.db, self.table_name, self.org_table, self.name, self.org_name = result
+		if converter is None:
+			return raw
 
-		s = struct.Struct('<xHIBHBxx')
+		if converter == TO_STRING:
+			return raw.decode(self.coding, 'ignore')
 
-		self.charsetnr, self.length, self.type_code, self.flag, self.scale = s.unpack_from(
-			init_bytes[pos: pos + s.size]
-		)
+		return converter(raw)
+
+
+class Column(list):
+	pass
 
 
 class MysqlResultPacket(MysqlPacket):
-	def __init__(self, *args):
-		super().__init__(*args)
+	def read_field(self, coding):
+		field = Field()
+		field.coding = coding
 
-		self.field_count = 0
-		self.fields = None
+		field.catalog = self.read_length_coded_string()
+		field.db = self.read_length_coded_string().decode(coding)
+		field.table_name = self.read_length_coded_string().decode(coding)
+		field.org_table = self.read_length_coded_string()
+		field.name = self.read_length_coded_string().decode(coding)
+		field.org_name = self.read_length_coded_string()
 
-	def read_columns(self):
-		self.field_count = self.read_length_encoded_integer()
-		self.fields = self.read_fields()
+		_ = struct.unpack('<xHIBHBxx', self.read(13))
+		field.charsetnr, field.length, field.type_code, field.flags, field.scale = _
 
-	def read_fields(self):
-		_ = []
+		return field
 
-		for i in range(self.field_count):
-			length = self.read_length_encoded_integer()
-			# i do not know why
-			_.append(Field(self.read(length + 3)))
+	def read_column(self, fields, converters):
+		column = Column()
+		end = self.length
 
-		return _
+		row_num = 0
+		while self.tell() != end:
+			_ = self.read_length_coded_string()
+			field = fields[row_num]
+
+			if _ is None:
+				column.append(_)
+			else:
+				column.append(field.decode(_, converters))
+
+			row_num += 1
+
+		return column
 
 
 class MysqlErrorPacket(MysqlPacket):
