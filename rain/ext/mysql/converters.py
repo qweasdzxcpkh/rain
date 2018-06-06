@@ -10,6 +10,11 @@ class TimeBytes(bytes):
 
 TO_STRING = -1
 
+
+def _to_decimal(x):
+	return Decimal(x.decode('ascii'))
+
+
 mysql_decoders = {
 	FIELD_TYPE.BIT: None,
 	FIELD_TYPE.TINY: int,
@@ -32,6 +37,6 @@ mysql_decoders = {
 	FIELD_TYPE.STRING: TO_STRING,
 	FIELD_TYPE.VAR_STRING: TO_STRING,
 	FIELD_TYPE.VARCHAR: TO_STRING,
-	FIELD_TYPE.DECIMAL: TO_STRING,
-	FIELD_TYPE.NEWDECIMAL: Decimal
+	FIELD_TYPE.DECIMAL: _to_decimal,
+	FIELD_TYPE.NEWDECIMAL: _to_decimal
 }

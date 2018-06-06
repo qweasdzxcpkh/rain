@@ -1,4 +1,5 @@
 import asyncio
+import struct
 
 from rain.ext.mysql.charset import charset_by_name
 from rain.ext.mysql.constants import CLIENT, COMMAND
@@ -8,15 +9,33 @@ from rain.ext.mysql.error import MysqlError
 from rain.ext.mysql.converters import mysql_decoders
 
 
+class ListRow(list):
+	# noinspection PyMethodOverriding
+	def append(self, field, value):
+		super().append(value)
+
+
+class DictRow(dict):
+	def append(self, field, value):
+		self[field.name] = value
+
+
 class QueryResult(object):
-	__slots__ = ('fields_count', 'fields', 'columns', 'field_names')
+	row_class = ListRow
+
+	__slots__ = ('fields_count', 'fields', 'rows', 'field_names')
 
 	def __init__(self):
 		self.fields_count = None
 		self.fields = None
-		self.columns = None
+		self.rows = None
 
 		self.field_names = None
+
+
+async def _select_db(conn, db):
+	packet = await conn.execute_command(COMMAND.COM_INIT_DB, db)
+	return packet.is_ok()
 
 
 class Mysql(object):
@@ -25,7 +44,7 @@ class Mysql(object):
 			host='localhost', port=3306,
 			pool_size=5,
 			user=None, password=None, database=None,
-			charset='latin1', use_unicode=True,
+			charset='latin1',
 			client_flag=0, local_infile=False,
 			converters=None
 	):
@@ -39,7 +58,6 @@ class Mysql(object):
 		self.password = password
 		self.charset = charset
 		self.encoding = charset_by_name(self.charset).encoding
-		self.use_unicode = use_unicode
 
 		self._local_infile = bool(local_infile)
 		if self._local_infile:
@@ -67,20 +85,21 @@ class Mysql(object):
 
 		self.connections.append(connection)
 
+	def choice_connection(self, identify) -> Connection:
+		return self.connections[0]
+
 	def start(self):
 		for i in range(self.pool_size):
 			self.make_connection()
 
-	def _choice_connection(self, identify) -> Connection:
-		return self.connections[0]
-
 	async def query(self, sql, identify):
 		result = QueryResult()
 		result.fields = {}
-		result.columns = []
+		result.rows = []
 
-		conn = self._choice_connection(identify)
+		conn = self.choice_connection(identify)
 		first_packet = await conn.execute_command(COMMAND.COM_QUERY, sql)
+
 		fields_count = first_packet.read_length_encoded_integer()
 		result.fields_count = fields_count
 		packet_number = first_packet.packet_number
@@ -109,10 +128,27 @@ class Mysql(object):
 				break
 
 			packet_number += 1
-			column = next_packet.read_column(result.fields, self.converters)
-			if column:
-				result.columns.append(column)
+			row = next_packet.read_row(result.fields, self.converters, result.row_class)
+			if row:
+				result.rows.append(row)
 
 			next_packet = await conn.read_packet(packet_number)
 
 		return result
+
+	async def use(self, db, identify=None):
+		if identify:
+			await _select_db(self.choice_connection(identify), db)
+		else:
+			for conn in self.connections:
+				await _select_db(conn, db)
+
+	async def kill(self, thread_id, identify):
+		conn = self.choice_connection(identify)
+
+		return (
+			await conn.execute_command(COMMAND.COM_PROCESS_KILL, struct.pack('<I', thread_id))
+		).is_ok()
+
+	async def change_charset(self, charset, identify=None):
+		pass

@@ -4,6 +4,8 @@ import struct
 from rain.ext.mysql.constants import FIELD_TYPE
 from rain.ext.mysql.converters import TO_STRING
 
+from rain.ext.mysql.error import MysqlError
+
 NULL_COLUMN = 251
 UNSIGNED_CHAR_COLUMN = 251
 UNSIGNED_SHORT_COLUMN = 252
@@ -116,10 +118,6 @@ class MysqlPacket(BytesIO):
 			return None
 		return self.read(length)
 
-	def read_struct(self, fmt):
-		s = struct.Struct(fmt)
-		return s.unpack_from(self.read(s.size))
-
 	def is_ok(self):
 		return self.head == b'\0' and self.length >= 7
 
@@ -135,7 +133,7 @@ class MysqlPacket(BytesIO):
 	def read_field(self, coding):
 		pass
 
-	def read_column(self, fields, converters):
+	def read_column(self, fields, converters, row_class):
 		pass
 
 
@@ -193,10 +191,6 @@ class Field(object):
 		return converter(raw)
 
 
-class Column(list):
-	pass
-
-
 class MysqlResultPacket(MysqlPacket):
 	def read_field(self, coding):
 		field = Field()
@@ -214,8 +208,8 @@ class MysqlResultPacket(MysqlPacket):
 
 		return field
 
-	def read_column(self, fields, converters):
-		column = Column()
+	def read_row(self, fields, converters, row_class):
+		row = row_class()
 		end = self.length
 
 		row_num = 0
@@ -224,16 +218,21 @@ class MysqlResultPacket(MysqlPacket):
 			field = fields[row_num]
 
 			if _ is None:
-				column.append(_)
+				row.append(field, _)
 			else:
-				column.append(field.decode(_, converters))
+				row.append(field, field.decode(_, converters))
 
 			row_num += 1
 
-		return column
+		return row
 
 
 class MysqlErrorPacket(MysqlPacket):
+	def __init__(self, *args):
+		super().__init__(*args)
+
+		raise MysqlError(*self.error_msg())
+
 	def error_msg(self):
 		self.read(1)
 		return self.read_uint16(), self.read().decode()

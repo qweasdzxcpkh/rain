@@ -3,9 +3,10 @@ from asyncio.streams import StreamReader, StreamWriter
 import struct
 import hashlib
 from functools import partial
+import time
 
 from rain.ext.mysql.charset import charset_by_id, charset_by_name
-from rain.ext.mysql.constants import CLIENT
+from rain.ext.mysql.constants import CLIENT, COMMAND
 from rain.ext.mysql.utils import int2byte, byte2int
 
 from rain.ext.mysql.error import MysqlError, OperationError
@@ -118,7 +119,6 @@ class Connection(object):
 		self.client_flag = client.client_flag
 		self.encoding = client.encoding
 		self.charset = client.charset
-		self.use_unicode = client.use_unicode
 
 		self.user = client.user.encode(self.encoding)
 		self.password = client.password.encode('latin1')
@@ -243,10 +243,7 @@ class Connection(object):
 		resp: MysqlPacket = await self.send_packet(data)
 
 		if not resp.is_auth_switch_request():
-			if resp.is_ok():
-				return
-
-			raise OperationError(resp.error_msg())
+			return
 
 		resp.read(2)
 		plugin_name = resp.read_string()
@@ -305,3 +302,9 @@ class Connection(object):
 			raise MysqlError(*error)
 
 		return packet
+
+	async def ping(self):
+		begin = self.loop.time()
+		packet = await self.execute_command(COMMAND.COM_PING, b'')
+
+		return packet.is_ok() and self.loop.time() - begin

@@ -12,10 +12,29 @@ client.start()
 result: QueryResult = loop.run_until_complete(client.query('select * from user', 1))
 
 print(
-	result.columns[0] == len(result.fields)
+	len(result.rows[0]) == len(result.fields)
 )
 
-for col in result.columns:
-	print(dict(zip(result.field_names, col)))
+print(result.rows)
+
+print(
+	loop.run_until_complete(client.query('SELECT now() as now', 1)).fields[0].name
+)
+
+print(
+	loop.run_until_complete(client.use('fwss'))
+)
+
+print(
+	loop.run_until_complete(
+		client.query('select * from account_user limit 10', 1)
+	).rows
+)
+
+print(
+	loop.run_until_complete(
+		client.connections[0].ping()
+	)
+)
 
 loop.run_forever()
