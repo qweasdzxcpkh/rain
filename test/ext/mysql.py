@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from rain.ext.mysql.client import Mysql, QueryResult
+from rain.ext.mysql.client import Mysql, QueryResult, Connection
 
 loop = asyncio.get_event_loop()
 
@@ -15,26 +15,12 @@ print(
 	len(result.rows[0]) == len(result.fields)
 )
 
-print(result.rows)
-
 print(
-	loop.run_until_complete(client.query('SELECT now() as now', 1)).fields[0].name
+	result.rows[0].Host
 )
 
-print(
-	loop.run_until_complete(client.use('fwss'))
-)
+conn: Connection = client.connections[0]
 
 print(
-	loop.run_until_complete(
-		client.query('select * from account_user limit 10', 1)
-	).rows
+	loop.run_until_complete(conn.create_db('spring'))
 )
-
-print(
-	loop.run_until_complete(
-		client.connections[0].ping()
-	)
-)
-
-loop.run_forever()

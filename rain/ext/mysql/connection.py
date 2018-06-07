@@ -3,13 +3,12 @@ from asyncio.streams import StreamReader, StreamWriter
 import struct
 import hashlib
 from functools import partial
-import time
 
 from rain.ext.mysql.charset import charset_by_id, charset_by_name
-from rain.ext.mysql.constants import CLIENT, COMMAND
+from rain.ext.mysql.constants import CLIENT, COMMAND, ER
 from rain.ext.mysql.utils import int2byte, byte2int
 
-from rain.ext.mysql.error import MysqlError, OperationError
+from rain.ext.mysql.error import MysqlError
 from rain.ext.mysql.pakcet import MysqlPacket
 
 sha_new = partial(hashlib.new, 'sha1')
@@ -160,7 +159,7 @@ class Connection(object):
 			packet.append(await self.reader.read(need_length))
 
 		if packet_number != seq_id:
-			raise MysqlError('Connection Lost')
+			raise MysqlError(1, 'Connection Lost')
 
 		return packet
 
@@ -256,7 +255,7 @@ class Connection(object):
 
 		error = auth_packet.error_msg()
 		if error:
-			raise OperationError('Auth Error {} {}'.format(*error))
+			raise MysqlError(2, 'Auth Error {} {}'.format(*error))
 
 	async def _process_auth(self, plugin_name, auth_packet):
 		data = False
@@ -273,10 +272,10 @@ class Connection(object):
 			if prompt == b"Password: ":
 				return await self.send_packet(self.password.encode('latin1') + b'\0')
 			else:
-				raise OperationError(2059, 'Auth Plugin: "{}" is not supported'.format(plugin_name))
+				raise MysqlError(2059, 'Auth Plugin: "{}" is not supported'.format(plugin_name))
 
 		if not data:
-			raise OperationError(2059, 'Auth Plugin: "{}" is not supported'.format(plugin_name))
+			raise MysqlError(2059, 'Auth Plugin: "{}" is not supported'.format(plugin_name))
 
 		return await self.send_packet(data)
 
@@ -290,7 +289,7 @@ class Connection(object):
 
 		packet_size = len(sql) + 1
 		if packet_size > MAX_PACKET_LEN:
-			raise OperationError("Your sql is too too too too large")
+			raise MysqlError(3, "Your sql is too too too too large")
 
 		prelude = struct.pack('<iB', packet_size, command)
 		self._next_seq_id = 0
@@ -308,3 +307,22 @@ class Connection(object):
 		packet = await self.execute_command(COMMAND.COM_PING, b'')
 
 		return packet.is_ok() and self.loop.time() - begin
+
+	async def kill(self, thread_id):
+		return (
+			await self.execute_command(COMMAND.COM_PROCESS_KILL, struct.pack('<I', thread_id))
+		).is_ok()
+
+	async def use(self, db):
+		return (await self.execute_command(COMMAND.COM_INIT_DB, db)).is_ok()
+
+	# noinspection SqlDialectInspection,SqlNoDataSourceInspection
+	async def create_db(self, db):
+		try:
+			packet = (await self.execute_command(COMMAND.COM_QUERY, 'CREATE DATABASE {}'.format(db)))
+		except MysqlError as e:
+			if e.error_no == ER.DB_CREATE_EXISTS:
+				return True
+			raise
+
+		return packet.is_ok()

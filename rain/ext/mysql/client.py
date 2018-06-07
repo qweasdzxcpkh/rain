@@ -1,27 +1,48 @@
 import asyncio
-import struct
 
 from rain.ext.mysql.charset import charset_by_name
 from rain.ext.mysql.constants import CLIENT, COMMAND
 
-from rain.ext.mysql.base import Connection
+from rain.ext.mysql.connection import Connection
 from rain.ext.mysql.error import MysqlError
 from rain.ext.mysql.converters import mysql_decoders
 
 
-class ListRow(list):
-	# noinspection PyMethodOverriding
+class Row(object):
+	def __init__(self):
+		pass
+
 	def append(self, field, value):
-		super().append(value)
+		pass
 
 
-class DictRow(dict):
+class ListRow(Row, list):
+	def append(self, field, value):
+		list.append(self, value)
+
+
+_real_none = object()
+
+
+class DictRow(Row, dict):
 	def append(self, field, value):
 		self[field.name] = value
 
 
+class ObjectRow(DictRow):
+	def __getattr__(self, item):
+		_ = self.get(item, _real_none)
+		if _ is _real_none:
+			raise AttributeError(item)
+
+		return _
+
+	def __repr__(self):
+		return '<{}>'.format(self.__class__.__name__)
+
+
 class QueryResult(object):
-	row_class = ListRow
+	row_class = ObjectRow
 
 	__slots__ = ('fields_count', 'fields', 'rows', 'field_names')
 
@@ -31,11 +52,6 @@ class QueryResult(object):
 		self.rows = None
 
 		self.field_names = None
-
-
-async def _select_db(conn, db):
-	packet = await conn.execute_command(COMMAND.COM_INIT_DB, db)
-	return packet.is_ok()
 
 
 class Mysql(object):
@@ -135,20 +151,3 @@ class Mysql(object):
 			next_packet = await conn.read_packet(packet_number)
 
 		return result
-
-	async def use(self, db, identify=None):
-		if identify:
-			await _select_db(self.choice_connection(identify), db)
-		else:
-			for conn in self.connections:
-				await _select_db(conn, db)
-
-	async def kill(self, thread_id, identify):
-		conn = self.choice_connection(identify)
-
-		return (
-			await conn.execute_command(COMMAND.COM_PROCESS_KILL, struct.pack('<I', thread_id))
-		).is_ok()
-
-	async def change_charset(self, charset, identify=None):
-		pass

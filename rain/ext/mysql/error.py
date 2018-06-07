@@ -1,10 +1,6 @@
 class MysqlError(Exception):
-	pass
+	def __init__(self, error_no, msg):
+		super().__init__(error_no, msg)
 
-
-class OperationError(MysqlError):
-	pass
-
-
-class InternalError(MysqlError):
-	pass
+		self.error_no = error_no
+		self.msg = msg
