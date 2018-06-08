@@ -74,6 +74,7 @@ def _hash_password_323(password):
 	return struct.pack(">LL", r1, r2)
 
 
+# noinspection PyPep8Naming
 class RandStruct_323(object):
 	def __init__(self, seed1, seed2):
 		self.max_value = 0x3FFFFFFF
@@ -299,6 +300,9 @@ class Connection(object):
 		error = packet.error_msg()
 		if error:
 			raise MysqlError(*error)
+
+		if packet.is_load_local_packet():
+			return await packet.send_file(self)
 
 		return packet
 

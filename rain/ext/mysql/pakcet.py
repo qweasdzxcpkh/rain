@@ -1,3 +1,4 @@
+import os
 from io import BytesIO
 import struct
 
@@ -127,6 +128,9 @@ class MysqlPacket(BytesIO):
 	def is_auth_switch_request(self):
 		return self.head == b'\xfe'
 
+	def is_load_local_packet(self):
+		return self.head == b'\xfb'
+
 	def error_msg(self):
 		pass
 
@@ -134,6 +138,9 @@ class MysqlPacket(BytesIO):
 		pass
 
 	def read_column(self, fields, converters, row_class):
+		pass
+
+	def send_file(self, conn):
 		pass
 
 
@@ -192,6 +199,9 @@ class Field(object):
 
 
 class MysqlResultPacket(MysqlPacket):
+	def is_load_local_packet(self):
+		return False
+
 	def read_field(self, coding):
 		field = Field()
 		field.coding = coding
@@ -235,8 +245,23 @@ class MysqlErrorPacket(MysqlPacket):
 
 	def error_msg(self):
 		self.read(1)
-		return self.read_uint16(), self.read().decode()
+		return self.read_uint16(), self.read()
 
 
 class MysqlLLPacket(MysqlPacket):
-	pass
+	def __init__(self, *args):
+		super().__init__(*args)
+		self.read(1)
+		self.filename = self.read().decode()
+
+	def is_load_local_packet(self):
+		return True
+
+	async def send_file(self, conn):
+		if not os.path.exists(self.filename):
+			raise MysqlError(1017, "Can't find file '{0}'".format(self.filename))
+
+		with open(self.filename, 'rb') as f:
+			data = f.read()
+
+		return await conn.send_packet(data)
