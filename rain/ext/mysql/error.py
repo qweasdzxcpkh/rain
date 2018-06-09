@@ -6,6 +6,7 @@ class MysqlError(Exception):
 		if msg[0] == _:
 			msg = msg[6:]
 
+		msg = msg.decode()
 		super().__init__(error_no, msg)
 
 		self.error_no = error_no

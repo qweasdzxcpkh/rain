@@ -4,7 +4,7 @@ from functools import partial
 from inspect import isawaitable
 
 from rain import ascii_logo
-from rain.config import Config
+from rain.g import G
 from rain.router import BaseRouter
 from rain.clses import Response
 from rain.h2tp import HTTPProtocol
@@ -48,16 +48,19 @@ class Rain(object):
 		self._after_request_funcs = []
 		self.error_handlers = {}
 
-		Config.DEBUG = debug
-		Config.HOST = kwargs.get('host')
-		Config.PORT = kwargs.get('port')
+		G.APP = self
+		G.DEBUG = debug
+		G.HOST = kwargs.get('host')
+		G.PORT = kwargs.get('port')
 
 	def run(self, use_ascii_logo=True, show_router=False):
 		if self.debug:
 			self.loop.set_debug(True)
 
 		for fn in self._before_start_funcs:
-			fn()
+			_ = fn()
+			if isawaitable(_):
+				self.loop.run_until_complete(_)
 
 		self._server = self.loop.run_until_complete(
 			self.loop.create_server(
@@ -122,8 +125,6 @@ class Rain(object):
 				res = protocol.error(e)
 			except Exception:
 				res = ServerError().make_response()
-				if isawaitable(res):
-					res = await res
 		else:
 			res = parse_error.make_response()
 
@@ -137,9 +138,7 @@ class Rain(object):
 		protocol.send(res.to_bytes())
 
 		for fn in self._after_request_funcs:
-			r = fn(request, res)
-			if isawaitable(r):
-				await r
+			fn(request, res)
 
 	def before_start(self, fn):
 		self._before_start_funcs.append(fn)

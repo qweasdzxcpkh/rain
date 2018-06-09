@@ -1,6 +1,6 @@
 from traceback import print_exc
 
-from rain.config import Config
+from rain.g import G
 from rain.utils import FakeTextFile
 
 
@@ -75,7 +75,7 @@ class ServerError(HTTPError):
 
 	def make_response(self, **kwargs):
 		s, d, h = super().make_response(**kwargs)
-		if Config.DEBUG:
+		if G.DEBUG:
 			d = self.file.read()
 
 		return s, d, h
@@ -97,7 +97,7 @@ class TplError(HTTPError):
 
 	def make_response(self, **kwargs):
 		s, d, h = super().make_response(**kwargs)
-		if Config.DEBUG:
+		if G.DEBUG:
 			d = 'TplFileName: {}; LineNo: {}; Error: {}'.format(
 				self.file, self.lineno, self.error
 			)

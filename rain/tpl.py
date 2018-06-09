@@ -124,7 +124,8 @@ def _eval(order: _Order):
 class _CommentOrder(_Order):
 	def render(self):
 		if self.pr.config('COMMENTS'):
-			return '<!--\n\t{0}\n\t-->'.format(self.txt)
+			__ = '<!--\n\t{0}\n\t-->' if '\n' in self.txt else '<!--{0}-->'
+			return __.format(self.txt)
 
 		return ''
 
@@ -169,19 +170,13 @@ class _ExecutableOrder(_Order):
 
 
 class _UseFileOrder(_ExecutableOrder):
-	__parse__ = None
-
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		self.target_filename = ''
 
 	@classmethod
-	def parse(cls, name, config, comeform=None, cache=None):
-		if cls.__parse__ is None:
-			cls.__parse__ = __import__('tpl.parser.main', fromlist=['parse']).parse
-
-		if callable(cls.__parse__):
-			return cls.__parse__(name, config or {}, comeform=comeform, cache=cache)
+	def parse(cls, name, config, comeform=None):
+		return _parse(name, config or {}, comeform=comeform)
 
 	def complete(self):
 		filename = self.txt
@@ -212,8 +207,7 @@ class _IncludeOrder(_UseFileOrder):
 		pr = self.parse(
 			self.target_filename,
 			self.pr.config(),
-			comeform=cf,
-			cache=self.pr.cache
+			comeform=cf
 		)
 
 		return pr.render(self.locals)
@@ -229,8 +223,7 @@ class _ExtendsOrder(_UseFileOrder):
 		if not self.pr.base:
 			self.pr.base = self.parse(
 				self.target_filename,
-				self.pr.config(),
-				cache=self.pr.cache
+				self.pr.config()
 			)
 
 		if self.pr.base.name in list(

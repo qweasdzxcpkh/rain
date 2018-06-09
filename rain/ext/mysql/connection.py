@@ -112,6 +112,7 @@ def _scramble_323(password, message):
 MAX_PACKET_LEN = 2 ** 24 - 1
 
 
+# noinspection SqlDialectInspection,SqlNoDataSourceInspection
 class Connection(object):
 	def __init__(self, client, reader, writer):
 		self.client = client
@@ -320,13 +321,23 @@ class Connection(object):
 	async def use(self, db):
 		return (await self.execute_command(COMMAND.COM_INIT_DB, db)).is_ok()
 
-	# noinspection SqlDialectInspection,SqlNoDataSourceInspection
 	async def create_db(self, db):
 		try:
-			packet = (await self.execute_command(COMMAND.COM_QUERY, 'CREATE DATABASE {}'.format(db)))
+			packet = await self.execute_command(COMMAND.COM_QUERY, 'CREATE DATABASE {}'.format(db))
 		except MysqlError as e:
 			if e.error_no == ER.DB_CREATE_EXISTS:
 				return True
+			raise
+
+		return packet.is_ok()
+
+	async def create_table(self, sql):
+		try:
+			packet = await self.execute_command(COMMAND.COM_QUERY, sql)
+		except MysqlError as e:
+			if e.error_no == ER.TABLE_EXISTS_ERROR:
+				return True
+
 			raise
 
 		return packet.is_ok()

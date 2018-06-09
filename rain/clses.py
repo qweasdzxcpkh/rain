@@ -2,7 +2,7 @@ import time
 import json
 from http import HTTPStatus
 
-from rain.form import FormFiles, FormData, FormFile, Md5FormFile
+from rain.form import FormFiles, FormData, FormFile, HashFormFile
 from rain.utils.funcwrap import cachedproperty
 
 http_status = dict(
@@ -18,7 +18,7 @@ http_status = dict(
 	)
 )
 
-_l = []
+_l = tuple()
 _real_none = object()
 
 
@@ -77,7 +77,7 @@ class Cookie(dict):
 def _mp_parse(lines, boundary, md5=False):
 	form = FormData()
 	files = FormFiles()
-	file_cls = Md5FormFile if md5 else FormFile
+	file_cls = HashFormFile if md5 else FormFile
 
 	if not boundary or not lines:
 		return form, files
@@ -149,7 +149,7 @@ class Request(object):
 		'_form_files',
 		'_form_data',
 		'parse_error',
-		'need_file_md5'
+		'need_file_hash'
 	)
 
 	remote_addr_key = None
@@ -164,7 +164,7 @@ class Request(object):
 		self.query_string = None
 
 		self.headers = {}
-		self.need_file_md5 = False
+		self.need_file_hash = False
 
 		self._remote = None
 
@@ -225,7 +225,7 @@ class Request(object):
 			return FormData.load(_.decode('latin1', 'ignore'))
 		else:  # form-data
 			if self._form_data is _real_none:
-				self._form_data, self._form_files = _mp_parse(self._body_lines, self._boundary, self.need_file_md5)
+				self._form_data, self._form_files = _mp_parse(self._body_lines, self._boundary, self.need_file_hash)
 				del self._body_lines
 
 			return self._form_data

@@ -1,10 +1,10 @@
 import os
 from io import BytesIO
 from urllib.parse import unquote
-from hashlib import md5
+import hashlib
 
-_ln = [None]
-_l = []
+_ln = tuple([None])
+_l = tuple()
 
 
 class FormData(dict):
@@ -129,7 +129,9 @@ class FormFile(BytesIO):
 		self._ok = True
 
 
-class Md5FormFile(FormFile):
+class HashFormFile(FormFile):
+	hash_method = hashlib.md5
+
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 
@@ -149,7 +151,7 @@ class Md5FormFile(FormFile):
 		super()._write(l)
 
 		if self._m is None:
-			self._m = md5()
+			self._m = self.hash_method()
 
 		self._m.update(l)
 

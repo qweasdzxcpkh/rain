@@ -14,4 +14,4 @@ ascii_logo = ASCII_LOGO = '''
 
 desc = DESC = "A simple async http api server."
 
-from .app import Rain
+from rain.app import Rain
