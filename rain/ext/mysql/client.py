@@ -1,7 +1,7 @@
 import asyncio
 
 from rain.ext.mysql.charset import charset_by_name
-from rain.ext.mysql.constants import CLIENT, COMMAND
+from rain.ext.mysql.constants import CLIENT, COMMAND, ER
 
 from rain.ext.mysql.connection import Connection
 from rain.ext.mysql.error import MysqlError
@@ -131,7 +131,7 @@ class Mysql(object):
 		packet_number += 1
 		is_eof = (await conn.read_packet(packet_number)).is_eof()
 		if not is_eof:
-			raise MysqlError('Protocol error, expecting EOF')
+			raise MysqlError(3, 'Protocol error, expecting EOF')
 
 		result.field_names = tuple(map(lambda x: result.fields[x].name, sorted(result.fields.keys())))
 

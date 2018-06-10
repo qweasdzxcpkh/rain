@@ -3,7 +3,7 @@ from rain.ext.orm.utils import escape_string
 _default = object()
 
 
-class _Field(object):
+class Field(object):
 	__slots__ = (
 		'name', 'nullable',
 		'is_primary', 'unique',
@@ -36,7 +36,7 @@ class _Field(object):
 
 		auto_incr = getattr(self, 'auto_increment', False)
 		if auto_incr:
-			_.append('AUTO INCREMENT')
+			_.append('AUTO_INCREMENT')
 
 		if not self.nullable:
 			_.append('NOT NULL')
@@ -52,12 +52,16 @@ class _Field(object):
 
 		return ' '.join(_)
 
+	def set_name(self, name):
+		self.name = name
+		return self
+
 
 # INT
 
 
-class _IntField(_Field):
-	__slots__ = (*_Field.__slots__, 'auto_increment')
+class _IntField(Field):
+	__slots__ = (*Field.__slots__, 'auto_increment')
 
 	def __init__(self, auto_increment=False, **kwargs):
 		super().__init__(**kwargs)
@@ -97,8 +101,8 @@ class BIGINT(_IntField):
 
 # FLOAT
 
-class _FloatField(_Field):
-	__slots__ = (*_Field.__slots__, 'm', 'd')
+class _FloatField(Field):
+	__slots__ = (*Field.__slots__, 'm', 'd')
 
 	def __init__(self, m=None, d=None, **kwargs):
 		super().__init__(**kwargs)
@@ -136,8 +140,8 @@ class DECIMAL(_FloatField):
 
 # BIT
 
-class BIT(_Field):
-	__slots__ = (*_Field.__slots__, 'm')
+class BIT(Field):
+	__slots__ = (*Field.__slots__, 'm')
 	sql_type = 'BIT'
 
 	def __init__(self, m, **kwargs):
@@ -150,28 +154,28 @@ class BIT(_Field):
 
 # Date And Time
 
-class DATE(_Field):
-	__slots__ = _Field.__slots__
+class DATE(Field):
+	__slots__ = Field.__slots__
 	sql_type = 'DATE'
 
 
-class DATETIME(_Field):
-	__slots__ = _Field.__slots__
+class DATETIME(Field):
+	__slots__ = Field.__slots__
 	sql_type = 'DATETIME'
 
 
-class TIMESTAMP(_Field):
-	__slots__ = _Field.__slots__
+class TIMESTAMP(Field):
+	__slots__ = Field.__slots__
 	sql_type = 'TIMESTAMP'
 
 
-class TIME(_Field):
-	__slots__ = _Field.__slots__
+class TIME(Field):
+	__slots__ = Field.__slots__
 	sql_type = 'TIME'
 
 
-class YEAR(_Field):
-	__slots__ = (*_Field.__slots__, 'length')
+class YEAR(Field):
+	__slots__ = (*Field.__slots__, 'length')
 	sql_type = 'YEAR'
 
 	def __init__(self, length=None, **kwargs):
@@ -189,8 +193,8 @@ class YEAR(_Field):
 # CHAR
 
 
-class _StringField(_Field):
-	__slots__ = (*_Field.__slots__, 'length')
+class _StringField(Field):
+	__slots__ = (*Field.__slots__, 'length')
 
 	def __init__(self, length, **kwargs):
 		super().__init__(**kwargs)
@@ -220,16 +224,16 @@ class VARBINARY(_StringField):
 	sql_type = 'VARBINARY'
 
 
-class BLOB(_Field):
-	__slots__ = _Field.__slots__
+class BLOB(Field):
+	__slots__ = Field.__slots__
 	sql_type = 'BLOB'
 
 
-class TEXT(_Field):
-	__slots__ = _Field.__slots__
+class TEXT(Field):
+	__slots__ = Field.__slots__
 	sql_type = 'TEXT'
 
 
-class JSON(_Field):
-	__slots__ = _Field.__slots__
+class JSON(Field):
+	__slots__ = Field.__slots__
 	sql_type = 'JSON'
