@@ -17,8 +17,8 @@ class Meta(type):
 
 	@classmethod
 	def init_table(mcs, table):
-		if not table.__table__name__:
-			table.__table__name__ = table.__name__
+		if not table.__table_name__:
+			table.__table_name__ = table.__name__
 
 		columns = {}
 		indexs = {}
@@ -28,6 +28,8 @@ class Meta(type):
 			if isinstance(v, field.Field):
 				v.set_name(k)
 				columns[k] = v
+
+				v.tbl = table
 
 				if v.is_primary:
 					primary_keys.append(k)
@@ -56,7 +58,7 @@ _none = object()
 
 
 class Table(object, metaclass=Meta):
-	__table__name__ = ''
+	__table_name__ = ''
 	__auto_create__ = False
 	__columns__ = None
 	__index_keys__ = None
@@ -83,7 +85,7 @@ class Table(object, metaclass=Meta):
 # noinspection SqlDialectInspection,SqlNoDataSourceInspection
 def render_create_sql(table):
 	assert table is not Table and isclass(table) and Table in table.__mro__
-	table_name = table.__table__name__
+	table_name = table.__table_name__
 
 	columns = list(
 		map(
@@ -133,6 +135,10 @@ def render_create_sql(table):
 	return table_sql, index_sqls
 
 
+def is_table(tbl):
+	return isclass(tbl) and tbl is not Table and Table in tbl.__mro__
+
+
 if __name__ == '__main__':
 	class User(Table):
 		__auto_create__ = True
@@ -140,3 +146,6 @@ if __name__ == '__main__':
 		id = field.INT(is_primary=True, auto_increment=True)
 		name = field.CHAR(20, unique=True, index_key='name.unique')
 		create_time = field.DATETIME()
+
+
+	print(User.id.op >= 12)

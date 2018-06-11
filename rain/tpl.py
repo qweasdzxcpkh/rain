@@ -314,9 +314,9 @@ class _IfOrder(_ExecutableOrder):
 
 		for to in self.elifs:
 			if bool(_eval(to)):
-				return to.render(test=True)
+				return to.render
 
-		return self.else_.render() if self.else_ else ''
+		return self.else_.render if self.else_ else ''
 
 	def render(self, test=False):
 		if not test:
@@ -523,7 +523,7 @@ class _ParseResult(object):
 			return ''.join([(x.render_() if type(x) is _BlockOrder else x) for x in self._html])
 
 		self.base.ext = self
-		return self.base.render(self.locals)
+		return self.base.render
 
 
 class Stack(object):

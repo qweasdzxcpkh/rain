@@ -1,4 +1,5 @@
 from rain.ext.orm.utils import escape_string
+from rain.ext.orm.op import OP, Alias
 
 _default = object()
 
@@ -8,7 +9,8 @@ class Field(object):
 		'name', 'nullable',
 		'is_primary', 'unique',
 		'default', 'onupdate',
-		'index_key'
+		'index_key', 'op',
+		'tbl'
 	)
 
 	sql_type = None
@@ -27,6 +29,12 @@ class Field(object):
 		self.default = default
 		self.index_key = index_key
 		self.onupdate = on_update
+
+		self.op = OP(self)
+		self.tbl = None
+
+	def __str__(self):
+		return '{}.{}'.format(self.tbl.__table_name__, self.name)
 
 	def _type_for_create(self):
 		return self.sql_type
@@ -55,6 +63,12 @@ class Field(object):
 	def set_name(self, name):
 		self.name = name
 		return self
+
+	def desc(self):
+		return str(self) + ' DESC'
+
+	def alias(self, name):
+		return Alias(self, name)
 
 
 # INT

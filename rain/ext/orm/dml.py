@@ -1,5 +1,6 @@
-from rain.utils.funcwrap import cachedproperty
-from rain.ext.orm.utils import escape
+from rain.ext.orm.utils import escape, escape_bytes, escape_string
+from rain.ext.orm.op import OP, Alias
+from rain.ext.orm.components import is_table
 
 
 class _WhereSQL(object):
@@ -7,29 +8,37 @@ class _WhereSQL(object):
 		self.conditions = None
 
 	def where(self, *conditions):
-		pass
+		if self.conditions:
+			self.conditions += list(conditions)
+		else:
+			self.conditions = list(conditions)
+
+		return self
 
 	def _where(self):
 		if self.conditions is None:
-			return ' '
+			return
 
-		return ' '.join(map(str, self.conditions))
-
-
-class _GroupBySQL(object):
-	def __init__(self):
-		self.group = None
-
-	def groupby(self, key):
-		pass
+		return 'WHERE ' + OP.and_(*self.conditions)
 
 
 class _OrderBySQL(object):
 	def __init__(self):
-		self.orders = None
+		self._orders = None
 
 	def orderby(self, *keys):
-		pass
+		if self._orders:
+			self._orders += list(map(str, keys))
+		else:
+			self._orders = list(map(str, keys))
+
+		return self
+
+	def _order(self):
+		if not self._orders:
+			return
+
+		return 'ORDER BY {}'.format(','.join(self._orders))
 
 
 class _LimitSQL(object):
@@ -44,10 +53,10 @@ class _LimitSQL(object):
 		return self
 
 	def _limit(self):
-		if self._limit_no:
-			return 'LIMIT {},{}'.format(self._offset, self._limit_no)
-		else:
-			return ' '
+		if not self._limit_no:
+			return
+
+		return 'LIMIT {},{}'.format(self._offset, self._limit_no)
 
 
 class _ValuesSQL(object):
@@ -69,12 +78,23 @@ class _ValuesSQL(object):
 		return self
 
 	def _val_txt(self):
-		return ','.join(
-			map(
-				lambda x: '(' + ','.join(x) + ')',
-				self._vals
-			)
-		)
+		__ = []
+		contain_bytes = False
+		for row in self._vals:
+			_ = []
+			row_contain_bytes = False
+			for v in row:
+				if isinstance(v, bytes):
+					row_contain_bytes = True
+				_.append(v)
+
+			if row_contain_bytes:
+				__.append(_)
+				contain_bytes = True
+			else:
+				__.append('(' + ','.join(_) + ')')
+
+		return __, contain_bytes
 
 
 class _SQL(object):
@@ -103,13 +123,52 @@ class InsertSQL(_SQL, _ValuesSQL):
 		if self._keys is None or self._vals is None:
 			return ''
 
-		return 'INSERT{prefix}INTO {tbl_name} ({cols}) VALUES {vals}{on_dupl}'.format(
+		before = 'INSERT{prefix}INTO {tbl_name} ({cols}) VALUES '.format(
 			prefix=self.prefix,
-			tbl_name=self.table.__table__name__,
-			cols=','.join(self._keys),
-			vals=self._val_txt(),
+			tbl_name=self.table.__table_name__,
+			cols=','.join(self._keys)
+		)
+
+		vals, contain_bytes = self._val_txt()
+		if contain_bytes:
+			return b''.join(
+				[
+					before.encode(),
+					b','.join(
+						map(
+							lambda row: (
+								b'('
+								+
+								b','.join(map(lambda x: x if isinstance(x, bytes) else x.encode(), row))
+								+
+								b')'
+
+								if
+								isinstance(row, list)
+
+								else
+								row.encode()
+							),
+							vals
+						)
+					),
+					self.on_duplicate.encode()
+				]
+			).strip()
+
+		return '{before}{vals}{on_dupl}'.format(
+			before=before,
+			vals=','.join(vals),
 			on_dupl=self.on_duplicate
 		).strip()
+
+
+class UpdateSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL, _ValuesSQL):
+	def __init__(self):
+		super().__init__()
+
+	def render(self):
+		pass
 
 
 # noinspection SqlDialectInspection
@@ -124,28 +183,91 @@ class DeleteSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
 		self.table = table
 
 	def render(self):
-		return 'DELETE{prefix}FROM {tbl_name}{where}{limit}'.format(
+		_ = filter(bool, [self._where(), self._order(), self._limit()])
+
+		return 'DELETE{prefix}FROM {tbl_name} {ext}'.format(
 			prefix=self.prefix,
-			tbl_name=self.table.__table__name__,
-			where=self._where(),
-			limit=self._limit()
+			tbl_name=self.table.__table_name__,
+			ext=' '.join(_)
 		).strip()
 
 
-class UpdateSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL, _ValuesSQL):
-	def render(self):
-		pass
-
-	def __init__(self):
+# noinspection SqlDialectInspection,PyStringFormat
+class SelectSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
+	def __init__(self, *fields, prefix=None, expression=None):
 		super().__init__()
 
+		self.tbls = set()
+		self.fields = []
+		for f in fields:
+			if isinstance(f, field.Field):
+				self.tbls.add(f.tbl.__table_name__)
+				self.fields.append(str(f))
+			elif isinstance(f, Alias):
+				_f = f.field
+				self.tbls.add(_f.tbl.__table_name__)
+				self.fields.append(str(f))
+			elif isinstance(f, OP):
+				_f = f.base
+				self.tbls.add(_f.tbl.__table_name__)
+				self.fields.append(str(f))
 
-class SelectSQL(_SQL, _WhereSQL, _GroupBySQL, _OrderBySQL, _LimitSQL):
+		if not self.fields and is_table(fields[0]):
+			self.tbls.add(fields[0].__table_name__)
+			self.fields = ['*']
+
+		if not self.fields:
+			raise ValueError
+
+		self.fields = ','.join(self.fields)
+		self.prefix = prefix
+		self.expression = expression
+
+		self._groups = None
+		self._having = None
+
+	def having(self, *conditions):
+		if self._having:
+			self._having += list(map(str, conditions))
+		else:
+			self._having = list(map(str, conditions))
+
+		return self
+
+	def groupby(self, *keys):
+		if self._groups:
+			self._groups += list(map(str, keys))
+		else:
+			self._groups = list(map(str, keys))
+
+		return self
+
+	def _groups_txt(self):
+		if not self._groups:
+			return
+
+		return 'GROUP BY ' + ','.join(self._groups)
+
+	def _havings_txt(self):
+		if not self._having:
+			return
+
+		return 'HAVING ' + OP.and_(*self._having)
+
 	def render(self):
-		pass
+		if self.fields == '*' and self.expression is not None:
+			return 'SELECT {}'.format(self.expression)
 
-	def __init__(self):
-		super().__init__()
+		_ = filter(
+			bool,
+			[
+				self._where(), self._groups_txt(),
+				self._havings_txt(), self._order(),
+				self._limit()
+			]
+		)
+
+		return 'SELECT {} FROM {} {}'.format(self.fields, ','.join(self.tbls), ' '.join(_)).strip()
 
 
 if __name__ == '__main__':
@@ -161,9 +283,34 @@ if __name__ == '__main__':
 		create_time = field.DATETIME()
 
 
-	insert = InsertSQL(User)
-	insert.values(lst=[{'name': 'select * from, mysql.User', 'id': 12}, {'name': 'sport', 'id': 13}])
-	print(insert.render())
+	delete = DeleteSQL(
+		User
+	).where(
+		User.id.op.in_(1, 2, 3, 4),
+		User.create_time.op >= '2018-12-12 00:00:00'
+	).orderby(
+		User.name.desc(), User.id
+	).limit(12)
 
-	delete = DeleteSQL(User).limit(12)
 	print(delete.render())
+
+	selectAll = SelectSQL(
+		(User.id.op + 12).alias('UidAdd12'),
+		User.name
+	).where(
+		User.create_time.op.between('2018-01-01 00:00:00', '2018-12-31 11:59:59')
+	).groupby(
+		'UidAdd12', User.name
+	).having(
+		User.id.op > 12
+	).orderby(
+		User.name.desc()
+	).limit(10)
+
+	print(selectAll.render())
+
+	insert = InsertSQL(User)
+
+	insert.values(lst=[{'name': b'spring', 'id': 34}, {'name': 'foo', 'id': 45}, {'name': b'key', 'id': 65}])
+
+	print(insert.render())
