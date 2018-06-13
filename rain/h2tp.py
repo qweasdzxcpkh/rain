@@ -81,11 +81,10 @@ class HTTPProtocol(asyncio.Protocol):
 		self.loop = asyncio.get_event_loop()
 
 	def connection_made(self, transport):
-		if self.request is None:
-			self.request = Request()
-			self.reader = StreamReader(loop=self.loop)
-
+		self.request = Request()
+		self.reader = StreamReader(loop=self.loop)
 		self.transport = transport
+
 		self.request.remote_addr = '{}:{}'.format(*transport.get_extra_info('peername'))
 		self.reader.set_transport(transport)
 		self.loop.create_task(self.parse())
