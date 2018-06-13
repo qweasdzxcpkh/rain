@@ -1,12 +1,11 @@
 import asyncio
 import json
 
-from rain.ext.mysql.constants import COMMAND
 from rain.ext.mysql.client import Mysql, Connection
 
 from rain.ext.orm import field
 from rain.ext.orm.components import Table
-from rain.ext.orm.dml import InsertSQL
+from rain.ext.orm.dml import InsertSQL, UpdateSQL
 
 loop = asyncio.get_event_loop()
 
@@ -25,22 +24,21 @@ class User(Table):
 	create_time = field.DATETIME()
 
 
-insert = InsertSQL(User)
+insert = InsertSQL(User, prefix='IGNORE')
 
 insert.values(
 	lst=[
 		{'name': b'spring', 'id': 34},
 		{'name': '''f'"o'"o''', 'id': 45},
-		{'name': b'''k"'"'ey''', 'id': 65}
+		{'name': b'''k"'"'ey''', 'id': 65},
+		{'name': '''select * from user;''', 'id': 46}
 	]
 )
 
-sql = insert.render()
+print(insert.render())
 
-print(sql)
+update = UpdateSQL(User)
 
-print(
-	loop.run_until_complete(
-		conn.execute_command(COMMAND.COM_QUERY, sql)
-	)
-)
+update.values(name="select * from mysql.user where User='root'").where(User.id.op == 45)
+
+print(update.render())

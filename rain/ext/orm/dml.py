@@ -20,7 +20,7 @@ class _WhereSQL(object):
 		if self.conditions is None:
 			return
 
-		return 'WHERE ' + OP.and_(*self.conditions)
+		return ' '.join(['WHERE', OP.and_(*self.conditions)])
 
 
 class _OrderBySQL(object):
@@ -39,7 +39,7 @@ class _OrderBySQL(object):
 		if not self._orders:
 			return
 
-		return 'ORDER BY {}'.format(','.join(self._orders))
+		return ' '.join(['ORDER BY', ','.join(self._orders)])
 
 
 class _LimitSQL(object):
@@ -93,9 +93,30 @@ class _ValuesSQL(object):
 				__.append(_)
 				contain_bytes = True
 			else:
-				__.append('(' + ','.join(_) + ')')
+				__.append(''.join(['(', ','.join(_), ')']))
 
 		return __, contain_bytes
+
+
+class _ValueSQL(object):
+	def __init__(self):
+		self._data = {}
+
+	def values(self, *args, **kwargs):
+		self._data.update(*args, **kwargs)
+		return self
+
+	def _val_txt(self):
+		_ = []
+
+		for k, v in self._data.items():
+			v = escape(v)
+			if isinstance(v, str):
+				_.append(('='.join([k, v])).encode())
+			else:
+				_.append(b'='.join([k.encode(), v]))
+
+		return b','.join(_)
 
 
 class _SQL(object):
@@ -110,14 +131,14 @@ class _SQL(object):
 
 
 class InsertSQL(_SQL, _ValuesSQL):
-	def __init__(self, table, prefix=None, on_duplicate=None):
+	def __init__(self, tbl, prefix=None, on_duplicate=None):
 		super().__init__()
 
 		prefix = (prefix or '').upper()
 		assert prefix in {'LOW_PRIORITY', 'DELAYED', 'HIGH_PRIORITY', 'IGNORE', ''}
 		self.prefix = ' {} '.format(prefix) if prefix else ' '
 
-		self.table = table
+		self.tbl = tbl
 		self.on_duplicate = 'ON DUPLICATE KEY UPDATE {}'.format(on_duplicate) if on_duplicate else ''
 
 	def render(self):
@@ -126,7 +147,7 @@ class InsertSQL(_SQL, _ValuesSQL):
 
 		before = 'INSERT{prefix}INTO {tbl_name} ({cols}) VALUES '.format(
 			prefix=self.prefix,
-			tbl_name=self.table.__table_name__,
+			tbl_name=self.tbl.__table_name__,
 			cols=','.join(self._keys)
 		)
 
@@ -157,45 +178,64 @@ class InsertSQL(_SQL, _ValuesSQL):
 				]
 			).strip()
 
-		return '{before}{vals}{on_dupl}'.format(
-			before=before,
-			vals=','.join(vals),
-			on_dupl=self.on_duplicate
-		).strip()
+		return ''.join([before, ','.join(vals), self.on_duplicate]).strip()
 
 
-class UpdateSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL, _ValuesSQL):
-	def __init__(self):
+class UpdateSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL, _ValueSQL):
+	def __init__(self, tbl, prefix=None):
 		super().__init__()
 
+		prefix = (prefix or '').upper()
+		assert prefix in {'LOW_PRIORITY', 'IGNORE', ''}
+		self.prefix = (prefix if prefix else '').encode()
+
+		self.tbl = tbl
+
 	def render(self):
-		pass
+		if not self._data:
+			return b''
+
+		return b' '.join(
+			map(
+				lambda x: x if isinstance(x, bytes) else x.encode(),
+				filter(
+					bool,
+					[
+						b'UPDATE', self.prefix, self.tbl.__table_name__.encode(),
+						b'SET', self._val_txt(),
+						self._where(),
+						self._order(),
+						self._limit()
+					]
+				)
+			)
+		).strip()
 
 
 # noinspection SqlDialectInspection
 class DeleteSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
-	def __init__(self, table, prefix=None):
+	def __init__(self, tbl, prefix=None):
 		super().__init__()
 
 		prefix = (prefix or '').upper()
 		assert prefix in {'LOW_PRIORITY', 'DELAYED', 'HIGH_PRIORITY', 'IGNORE', ''}
 		self.prefix = ' {} '.format(prefix) if prefix else ' '
 
-		self.table = table
+		self.tbl = tbl
 
 	def render(self):
 		_ = filter(bool, [self._where(), self._order(), self._limit()])
 
 		return 'DELETE{prefix}FROM {tbl_name} {ext}'.format(
 			prefix=self.prefix,
-			tbl_name=self.table.__table_name__,
+			tbl_name=self.tbl.__table_name__,
 			ext=' '.join(_)
 		).strip()
 
 
 # noinspection SqlDialectInspection,PyStringFormat
 class SelectSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
-	def __init__(self, *fields, prefix=None, expression=None):
+	def __init__(self, *fields, prefix=None):
 		super().__init__()
 
 		self.tbls = set()
@@ -222,7 +262,6 @@ class SelectSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
 
 		self.fields = ','.join(self.fields)
 		self.prefix = prefix
-		self.expression = expression
 
 		self._groups = None
 		self._having = None
@@ -256,9 +295,6 @@ class SelectSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
 		return 'HAVING ' + OP.and_(*self._having)
 
 	def render(self):
-		if self.fields == '*' and self.expression is not None:
-			return 'SELECT {}'.format(self.expression)
-
 		_ = filter(
 			bool,
 			[
@@ -268,4 +304,4 @@ class SelectSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
 			]
 		)
 
-		return 'SELECT {} FROM {} {}'.format(self.fields, ','.join(self.tbls), ' '.join(_)).strip()
+		return ' '.join(['SELECT', self.fields, 'FROM', ','.join(self.tbls), *_]).strip()

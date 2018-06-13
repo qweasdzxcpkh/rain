@@ -307,6 +307,14 @@ class Connection(object):
 
 		return packet
 
+	async def execute_iud(self, sql):
+		"""
+		iud ==> insert, update, delete
+		:param sql:
+		:return:
+		"""
+		return (await self.execute_command(COMMAND.COM_QUERY, sql)).is_ok()
+
 	async def ping(self):
 		begin = self.loop.time()
 		packet = await self.execute_command(COMMAND.COM_PING, b'')

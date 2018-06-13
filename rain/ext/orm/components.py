@@ -1,16 +1,19 @@
 from inspect import isclass
+from typing import Type
 
 from rain.ext.orm import field
 from rain.ext.orm.error import ORMError
 
 
-class Meta(type):
-	__client__ = None
+class _Meta(type):
+	__pool_class__ = None
+	__pool_size__ = 1
+	__connection_conf__ = None
 
 	def __new__(mcs, name, bases, attrs):
-		table: Table = type.__new__(mcs, name, bases, attrs)
+		table: Type[_Table] = type.__new__(mcs, name, bases, attrs)
 
-		if bases[0] is not object and Table in bases:
+		if table.__is_table_class__ and bases[0] != _Table:
 			mcs.init_table(table)
 
 		return table
@@ -46,17 +49,16 @@ class Meta(type):
 
 		if table.__auto_create__:
 			table_sql, index_sqls = render_create_sql(table)
-			pass
-
-	@classmethod
-	def set_client(mcs):
-		pass
 
 
 _none = object()
 
 
-class Table(object, metaclass=Meta):
+class _Table(object):
+	__slots__ = ('__row__',)
+
+	__is_table_class__ = False
+
 	__table_name__ = ''
 	__auto_create__ = False
 	__columns__ = None
@@ -69,21 +71,11 @@ class Table(object, metaclass=Meta):
 	def set_row(self, row):
 		self.__row__ = row
 
-	def __getattribute__(self, item):
-		super_value = super().__getattribute__(item)
-		if not isinstance(super_value, field.Field):
-			return super_value
-
-		_ = super().__getattribute__('__row__').get(item, _none)
-		if _ is _none:
-			raise ORMError('table: <{}> : column "{}" is empty'.format(self.__class__.__name__, item))
-
-		return _
-
 
 # noinspection SqlDialectInspection,SqlNoDataSourceInspection
 def render_create_sql(table):
-	assert table is not Table and isclass(table) and Table in table.__mro__
+	assert is_table(table)
+
 	table_name = table.__table_name__
 
 	columns = list(
@@ -135,11 +127,51 @@ def render_create_sql(table):
 
 
 def is_table(tbl):
-	return isclass(tbl) and tbl is not Table and Table in tbl.__mro__
+	return isclass(tbl) and tbl is not _Table and _Table in tbl.__mro__ and len(tbl.__mro__) > 3
+
+
+def make_base(**kwargs) -> Type[_Table]:
+	"""
+	dynamically adding metaclass
+	emmmmmmmmmmmmmmmmmmmm,,,,,,i never wrote this way,,,,,,
+	"""
+
+	pool_class = kwargs.pop('pool_class', None)
+	pool_size = kwargs.pop('pool_size', 1)
+
+	mcs = type(
+		'metaclass',
+		(_Meta,),
+		{
+			'__connection__conf__': kwargs,
+			'__pool_class__': pool_class,
+			'__pool_size__': pool_size
+		}
+	)
+
+	class _TableClass(_Table, metaclass=mcs):
+		__slots__ = _Table.__slots__
+		__is_table_class__ = True
+
+		def __getattribute__(self, item):
+			super_value = _Table.__getattribute__(self, item)
+			if not isinstance(super_value, field.Field):
+				return super_value
+
+			_ = super().__getattribute__('__row__').get(item, _none)
+			if _ is _none:
+				raise ORMError('table: <{}> : column "{}" is empty'.format(self.__class__.__name__, item))
+
+			return _
+
+	return _TableClass  # type: Type[_Table]
 
 
 if __name__ == '__main__':
-	class User(Table):
+	base = make_base()
+
+
+	class User(base):
 		__auto_create__ = True
 
 		id = field.INT(is_primary=True, auto_increment=True)
@@ -147,4 +179,9 @@ if __name__ == '__main__':
 		create_time = field.DATETIME()
 
 
-	print(User.id.op >= 12)
+	class Group(base):
+		__auto_create__ = True
+
+		id = field.INT(is_primary=True, auto_increment=True)
+		name = field.CHAR(20, unique=True)
+		create_time = field.DATETIME()
