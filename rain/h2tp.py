@@ -109,13 +109,13 @@ class HTTPProtocol(asyncio.Protocol):
 				_ = _parse_first_line(line)
 				if not _ or len(_) != 4:
 					req.parse_error = BadRequestError()
-					return self.finish()
+					return await self.finish()
 
 				req.method, req.path, req.query_string, req.hv = _
 				if self.vmap_case == '00':
 					req.handler = self.router.find_handler(req)
 					if not callable(req.handler):
-						return self.finish()
+						return await self.finish()
 			else:
 				if req._body_length:
 					req._body_lines.append(line)
@@ -123,16 +123,16 @@ class HTTPProtocol(asyncio.Protocol):
 					if req._body_length > req.content_length + 1:
 						raise BadRequestError
 					elif req._body_length == req.content_length + 1:
-						return self.finish()
+						return await self.finish()
 				else:
 					if line == b'\r\n':
 						if self.vmap_case == '10':
 							req.handler = self.router.find_handler(req)
 							if not callable(req.handler):
-								return self.finish()
+								return await self.finish()
 
 						if req.method in ['GET', 'HEAD'] or not req.content_length:
-							return self.finish()
+							return await self.finish()
 
 						req._body_length = 1
 						req._body_lines = []
@@ -140,16 +140,15 @@ class HTTPProtocol(asyncio.Protocol):
 						error = _parse_header_line(line, req)
 						if error is not None:
 							req.parse_error = error
-							return self.finish()
+							return await self.finish()
 
-	def finish(self):
+	async def finish(self):
 		req = self.request
 		delattr(req, '_f')
 		delattr(req, '_body_length')
-
 		self.request = None
 
-		asyncio.get_event_loop().create_task(self.app.handle(req, self))
+		await self.app.handle(req, self)
 
 	def send(self, bs):
 		self.transport.write(bs)
