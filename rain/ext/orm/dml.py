@@ -1,6 +1,7 @@
-from rain.ext.orm.utils import escape, escape_bytes, escape_string
+from rain.ext.orm.escape import escape
 from rain.ext.orm.op import OP, Alias
 from rain.ext.orm.components import is_table
+from rain.ext.orm import field
 
 
 class _WhereSQL(object):
@@ -268,49 +269,3 @@ class SelectSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
 		)
 
 		return 'SELECT {} FROM {} {}'.format(self.fields, ','.join(self.tbls), ' '.join(_)).strip()
-
-
-if __name__ == '__main__':
-	from rain.ext.orm import field
-	from rain.ext.orm.components import Table
-
-
-	class User(Table):
-		__auto_create__ = True
-
-		id = field.INT(is_primary=True, auto_increment=True)
-		name = field.CHAR(20, unique=True, index_key='name.unique')
-		create_time = field.DATETIME()
-
-
-	delete = DeleteSQL(
-		User
-	).where(
-		User.id.op.in_(1, 2, 3, 4),
-		User.create_time.op >= '2018-12-12 00:00:00'
-	).orderby(
-		User.name.desc(), User.id
-	).limit(12)
-
-	print(delete.render())
-
-	selectAll = SelectSQL(
-		(User.id.op + 12).alias('UidAdd12'),
-		User.name
-	).where(
-		User.create_time.op.between('2018-01-01 00:00:00', '2018-12-31 11:59:59')
-	).groupby(
-		'UidAdd12', User.name
-	).having(
-		User.id.op > 12
-	).orderby(
-		User.name.desc()
-	).limit(10)
-
-	print(selectAll.render())
-
-	insert = InsertSQL(User)
-
-	insert.values(lst=[{'name': b'spring', 'id': 34}, {'name': 'foo', 'id': 45}, {'name': b'key', 'id': 65}])
-
-	print(insert.render())

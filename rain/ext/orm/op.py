@@ -1,6 +1,6 @@
 import re
 
-from rain.ext.orm.utils import escape_string
+from rain.ext.orm.escape import escape_string
 
 _alias_name_check = re.compile(r'^\w+$')
 

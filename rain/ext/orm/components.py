@@ -46,8 +46,7 @@ class Meta(type):
 
 		if table.__auto_create__:
 			table_sql, index_sqls = render_create_sql(table)
-			print(table_sql)
-			print(index_sqls)
+			pass
 
 	@classmethod
 	def set_client(mcs):

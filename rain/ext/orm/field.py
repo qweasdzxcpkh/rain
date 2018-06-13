@@ -1,4 +1,4 @@
-from rain.ext.orm.utils import escape_string
+from rain.ext.orm.escape import escape_string
 from rain.ext.orm.op import OP, Alias
 
 _default = object()
