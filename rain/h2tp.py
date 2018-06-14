@@ -131,7 +131,7 @@ class HTTPProtocol(asyncio.Protocol):
 							if not callable(req.handler):
 								return await self.finish()
 
-						if req.method in ['GET', 'HEAD'] or not req.content_length:
+						if req.method in {'GET', 'HEAD'} or not req.content_length:
 							return await self.finish()
 
 						req._body_length = 1

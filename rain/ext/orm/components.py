@@ -3,12 +3,12 @@ from typing import Type
 
 from rain.ext.orm import field
 from rain.ext.orm.error import ORMError
+from rain.ext.mysql.client import Mysql
 
 
 class _Meta(type):
-	__pool_class__ = None
-	__pool_size__ = 1
-	__connection_conf__ = None
+	__defer__ = False
+	__client_conf__ = None
 
 	def __new__(mcs, name, bases, attrs):
 		table: Type[_Table] = type.__new__(mcs, name, bases, attrs)
@@ -49,6 +49,21 @@ class _Meta(type):
 
 		if table.__auto_create__:
 			table_sql, index_sqls = render_create_sql(table)
+
+	@classmethod
+	def _make_client(mcs):
+		pass
+
+	@classmethod
+	def init(mcs):
+		if not mcs.__defer__:
+			mcs._make_client()
+
+	@classmethod
+	def query(mcs, sql):
+		pass
+
+	select = query
 
 
 _none = object()
@@ -136,18 +151,18 @@ def make_base(**kwargs) -> Type[_Table]:
 	emmmmmmmmmmmmmmmmmmmm,,,,,,i never wrote this way,,,,,,
 	"""
 
-	pool_class = kwargs.pop('pool_class', None)
-	pool_size = kwargs.pop('pool_size', 1)
+	defer = kwargs.pop('defer', False)
 
-	mcs = type(
+	mcs: Type[_Meta] = type(
 		'metaclass',
 		(_Meta,),
 		{
-			'__connection__conf__': kwargs,
-			'__pool_class__': pool_class,
-			'__pool_size__': pool_size
+			'__client_conf__': kwargs,
+			'__defer__': defer
 		}
 	)
+
+	mcs.init()
 
 	class _TableClass(_Table, metaclass=mcs):
 		__slots__ = _Table.__slots__
