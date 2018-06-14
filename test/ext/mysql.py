@@ -11,6 +11,10 @@ loop = asyncio.get_event_loop()
 
 client = Mysql(**json.load(open('./config.json')).get('mysql'))
 
-loop.run_until_complete(
-	client.query('SELECT * from user;')
+conn = loop.run_until_complete(client.pool.acquire()).conn
+
+print(
+	loop.run_until_complete(
+		conn.commit()
+	)
 )

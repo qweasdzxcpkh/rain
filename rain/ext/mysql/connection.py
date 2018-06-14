@@ -10,6 +10,7 @@ from rain.ext.mysql.utils import int2byte, byte2int
 
 from rain.ext.mysql.error import MysqlError
 from rain.ext.mysql.pakcet import MysqlPacket
+from rain.ext.mysql.result import QueryResult
 
 sha_new = partial(hashlib.new, 'sha1')
 SCRAMBLE_LENGTH = 20
@@ -114,6 +115,8 @@ MAX_PACKET_LEN = 2 ** 24 - 1
 
 # noinspection SqlDialectInspection,SqlNoDataSourceInspection
 class Connection(object):
+	query_result_class = QueryResult
+
 	def __init__(self, client, reader, writer):
 		self.client = client
 		self.loop = client.loop
@@ -284,6 +287,7 @@ class Connection(object):
 	async def init(self):
 		await self.get_server_info()
 		await self.do_auth()
+		await self.set_autocommit(self.client.autocommit)
 
 	async def execute_command(self, command, sql):
 		if isinstance(sql, str):
@@ -306,6 +310,52 @@ class Connection(object):
 			return await packet.send_file(self)
 
 		return packet
+
+	async def execute(self, sql):
+		await self.execute_command(COMMAND.COM_QUERY, sql)
+
+	async def query(self, sql):
+		result = self.query_result_class()
+		result.fields = {}
+		result.rows = []
+
+		first_packet = await self.execute(sql)
+
+		fields_count = first_packet.read_length_encoded_integer()
+		result.fields_count = fields_count
+		packet_number = first_packet.packet_number
+
+		row_num = 0
+		for i in range(fields_count):
+			packet_number += 1
+			field = (await self.read_packet(packet_number)).read_field(self.encoding)
+
+			result.fields[row_num] = field
+			row_num += 1
+
+		packet_number += 1
+		is_eof = (await self.read_packet(packet_number)).is_eof()
+		if not is_eof:
+			raise MysqlError(3, 'Protocol error, expecting EOF')
+
+		result.field_names = tuple(map(lambda x: result.fields[x].name, sorted(result.fields.keys())))
+
+		packet_number += 1
+
+		next_packet = await self.read_packet(packet_number)
+
+		while True:
+			if next_packet.is_eof():
+				break
+
+			packet_number += 1
+			row = next_packet.read_row(result.fields, self.client.converters, result.row_class)
+			if row:
+				result.rows.append(row)
+
+			next_packet = await self.read_packet(packet_number)
+
+		return result
 
 	async def ping(self):
 		begin = self.loop.time()
@@ -333,7 +383,7 @@ class Connection(object):
 
 	async def create_table(self, sql):
 		try:
-			packet = await self.execute_command(COMMAND.COM_QUERY, sql)
+			packet = await self.execute(sql)
 		except MysqlError as e:
 			if e.error_no == ER.TABLE_EXISTS_ERROR:
 				return True
@@ -341,3 +391,15 @@ class Connection(object):
 			raise
 
 		return packet.is_ok()
+
+	async def set_autocommit(self, acm):
+		return await self.execute(b'SET AUTOCOMMIT=' + str(acm).encode())
+
+	async def begin(self):
+		await self.execute(b'BEGIN')
+
+	async def commit(self):
+		await self.execute(b'COMMIT')
+
+	async def rollback(self):
+		await self.execute(b'ROLLBACK')

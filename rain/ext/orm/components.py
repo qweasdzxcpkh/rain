@@ -7,10 +7,13 @@ from rain.ext.mysql.client import Mysql
 
 
 class _Meta(type):
-	__defer__ = False
+	__client__ = None
 	__client_conf__ = None
 
 	def __new__(mcs, name, bases, attrs):
+		if mcs.__client__ is None:
+			mcs._init()
+
 		table: Type[_Table] = type.__new__(mcs, name, bases, attrs)
 
 		if table.__is_table_class__ and bases[0] != _Table:
@@ -51,19 +54,13 @@ class _Meta(type):
 			table_sql, index_sqls = render_create_sql(table)
 
 	@classmethod
-	def _make_client(mcs):
-		pass
+	def _init(mcs):
+		mcs.__client__ = Mysql(**mcs.__client_conf__)
 
 	@classmethod
-	def init(mcs):
-		if not mcs.__defer__:
-			mcs._make_client()
-
-	@classmethod
-	def query(mcs, sql):
-		pass
-
-	select = query
+	async def execute(mcs, sql):
+		with (await mcs.__client__) as conn:
+			pass
 
 
 _none = object()
@@ -162,8 +159,6 @@ def make_base(**kwargs) -> Type[_Table]:
 		}
 	)
 
-	mcs.init()
-
 	class _TableClass(_Table, metaclass=mcs):
 		__slots__ = _Table.__slots__
 		__is_table_class__ = True
@@ -180,23 +175,3 @@ def make_base(**kwargs) -> Type[_Table]:
 			return _
 
 	return _TableClass  # type: Type[_Table]
-
-
-if __name__ == '__main__':
-	base = make_base()
-
-
-	class User(base):
-		__auto_create__ = True
-
-		id = field.INT(is_primary=True, auto_increment=True)
-		name = field.CHAR(20, unique=True, index_key='name.unique')
-		create_time = field.DATETIME()
-
-
-	class Group(base):
-		__auto_create__ = True
-
-		id = field.INT(is_primary=True, auto_increment=True)
-		name = field.CHAR(20, unique=True)
-		create_time = field.DATETIME()
