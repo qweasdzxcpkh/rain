@@ -1,2 +1,0 @@
-class ORMError(Exception):
-	pass
