@@ -1,7 +1,5 @@
-from rain.ext.orm.escape import escape
-from rain.ext.orm.op import OP, Alias
-from rain.ext.orm.components import is_table
-from rain.ext.orm import field
+from rain.ext.orm.escape import escape_for_select, escape
+from rain.ext.orm.op import OP
 
 
 class _WhereSQL(object):
@@ -233,75 +231,9 @@ class DeleteSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
 		).strip()
 
 
-# noinspection SqlDialectInspection,PyStringFormat
-class SelectSQL(_SQL, _WhereSQL, _OrderBySQL, _LimitSQL):
-	def __init__(self, *fields, prefix=None):
-		super().__init__()
+class SelectSQL(str):
+	def format(self, *args, **kwargs):
+		args = map(escape_for_select, args)
+		kwargs = dict(map(lambda kv: (kv[0], escape_for_select(kv[1])), kwargs.items()))
 
-		self.tbls = set()
-		self.fields = []
-		for f in fields:
-			if isinstance(f, field.Field):
-				self.tbls.add(f.tbl.__table_name__)
-				self.fields.append(str(f))
-			elif isinstance(f, Alias):
-				_f = f.field
-				self.tbls.add(_f.tbl.__table_name__)
-				self.fields.append(str(f))
-			elif isinstance(f, OP):
-				_f = f.base
-				self.tbls.add(_f.tbl.__table_name__)
-				self.fields.append(str(f))
-
-		if not self.fields and is_table(fields[0]):
-			self.tbls.add(fields[0].__table_name__)
-			self.fields = ['*']
-
-		if not self.fields:
-			raise ValueError
-
-		self.fields = ','.join(self.fields)
-		self.prefix = prefix
-
-		self._groups = None
-		self._having = None
-
-	def having(self, *conditions):
-		if self._having:
-			self._having += list(map(str, conditions))
-		else:
-			self._having = list(map(str, conditions))
-
-		return self
-
-	def groupby(self, *keys):
-		if self._groups:
-			self._groups += list(map(str, keys))
-		else:
-			self._groups = list(map(str, keys))
-
-		return self
-
-	def _groups_txt(self):
-		if not self._groups:
-			return
-
-		return 'GROUP BY ' + ','.join(self._groups)
-
-	def _havings_txt(self):
-		if not self._having:
-			return
-
-		return 'HAVING ' + OP.and_(*self._having)
-
-	def render(self):
-		_ = filter(
-			bool,
-			[
-				self._where(), self._groups_txt(),
-				self._havings_txt(), self._order(),
-				self._limit()
-			]
-		)
-
-		return ' '.join(['SELECT', self.fields, 'FROM', ','.join(self.tbls), *_]).strip()
+		return super().format(*args, **kwargs)

@@ -8,6 +8,19 @@ _default = object()
 
 _str = str
 
+__field_cls = None
+
+
+def _import_field_cls():
+	global __field_cls
+
+	if __field_cls is None:
+		from rain.ext.orm.field import Field
+
+		__field_cls = Field
+
+	return __field_cls
+
 
 def str(obj):
 	if isinstance(obj, _str):
@@ -24,17 +37,6 @@ class _Fstr(object):
 
 	def __str__(self):
 		return self.init
-
-
-class Alias(object):
-	def __init__(self, field, name):
-		assert _alias_name_check.match(name)
-
-		self.field = field
-		self.name = name
-
-	def __str__(self):
-		return '{} AS {}'.format(self.field, self.name)
 
 
 class OP(object):
@@ -147,10 +149,10 @@ class OP(object):
 	def __xor__(self, other):
 		return self.op(0, '^', other)
 
-	def alias(self, name):
-		return Alias(self.base, name)
-
 	def in_(self, *seq):
+		if len(seq) == 1:
+			return self.op(0, ' IN ', _Fstr(str(seq[0])))
+
 		return self.op(
 			0, ' IN ', _Fstr('(' + ','.join(map(str, seq)) + ')')
 		)
@@ -185,30 +187,3 @@ class OP(object):
 	@classmethod
 	def or_(cls, *ops):
 		return ' OR '.join(map(_str, ops))
-
-
-if __name__ == '__main__':
-	class A(object):
-
-		def __init__(self, name, prefix=None):
-			self.prefix = prefix or self.__class__.__name__
-			self.name = name
-
-		def __str__(self):
-			return '{}.{}'.format(self.prefix, self.name)
-
-
-	Aid = OP(A('id'))
-
-	print((Aid > 12) == (Aid < 12))
-	print(~Aid)
-	print(-Aid)
-	print(OP.and_(Aid > 12, Aid < 233))
-	print(Aid.in_((1, 2, 3)))
-	print(Aid.between(12, 45))
-
-	Aname = OP(A('name'))
-	print(Aname == 'spring')
-
-	Adate = OP(A('date'))
-	print(Adate.between('2018-06-15 01:00:00', '2018-18-12 12:12:12'))

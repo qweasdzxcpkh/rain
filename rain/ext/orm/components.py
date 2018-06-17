@@ -1,3 +1,4 @@
+import asyncio
 from inspect import isclass
 from typing import Type
 
@@ -10,19 +11,24 @@ class _Meta(type):
 	__client__ = None
 	__client_conf__ = None
 
+	base_table_cls = None  # type: Type[_Table]
+	model = None  # type: Type[_Table]
+
 	def __new__(mcs, name, bases, attrs):
 		if mcs.__client__ is None:
 			mcs._init()
 
-		table: Type[_Table] = type.__new__(mcs, name, bases, attrs)
+		_table: Type[_Table] = type.__new__(mcs, name, bases, attrs)
 
-		if table.__is_table_class__ and bases[0] != _Table:
-			mcs.init_table(table)
+		if is_table(_table):
+			asyncio.get_event_loop().run_until_complete(
+				mcs.init_table(_table)
+			)
 
-		return table
+		return _table
 
 	@classmethod
-	def init_table(mcs, table):
+	async def init_table(mcs, table):
 		if not table.__table_name__:
 			table.__table_name__ = table.__name__
 
@@ -53,14 +59,30 @@ class _Meta(type):
 		if table.__auto_create__:
 			table_sql, index_sqls = render_create_sql(table)
 
+			async with mcs.conn_ctx() as conn:
+				await conn.create_table(table_sql)
+				for index_sql in index_sqls:
+					await conn.create_index(index_sql)
+
 	@classmethod
 	def _init(mcs):
 		mcs.__client__ = Mysql(**mcs.__client_conf__)
 
 	@classmethod
 	async def execute(mcs, sql):
-		with (await mcs.__client__) as conn:
-			pass
+		await mcs.__client__.execute(sql)
+
+	@classmethod
+	async def query(mcs, sql):
+		return await mcs.__client__.query(sql)
+
+	@classmethod
+	def conn_ctx(mcs):
+		return mcs.__client__.conn_ctx()
+
+	@classmethod
+	def tran_ctx(mcs, rollback_on_error=True):
+		return mcs.__client__.tran_ctx(rollback_on_error=rollback_on_error)
 
 
 _none = object()
@@ -68,8 +90,6 @@ _none = object()
 
 class _Table(object):
 	__slots__ = ('__row__',)
-
-	__is_table_class__ = False
 
 	__table_name__ = ''
 	__auto_create__ = False
@@ -86,7 +106,7 @@ class _Table(object):
 
 # noinspection SqlDialectInspection,SqlNoDataSourceInspection
 def render_create_sql(table):
-	assert is_table(table)
+	assert is_table(table) and table.__columns__ and table.__primary_keys__
 
 	table_name = table.__table_name__
 
@@ -119,14 +139,15 @@ def render_create_sql(table):
 						index_create_type = other
 						index_type = ''
 					else:
-						index_create_type = ''
+						index_create_type = ' '
 						index_type = other
 			else:
-				index_create_type = index_type = ''
+				index_create_type = ' '
+				index_type = ''
 				index_name = name
 
 			index_sqls.append(
-				'CREATE {} INDEX {} {} ON {} ({})'.format(
+				'CREATE{}INDEX {} {}ON {}({})'.format(
 					index_create_type,
 					index_name,
 					'USING ' + index_type if index_type else '',
@@ -142,26 +163,13 @@ def is_table(tbl):
 	return isclass(tbl) and tbl is not _Table and _Table in tbl.__mro__ and len(tbl.__mro__) > 3
 
 
-def make_base(**kwargs) -> Type[_Table]:
-	"""
-	dynamically adding metaclass
-	emmmmmmmmmmmmmmmmmmmm,,,,,,i never wrote this way,,,,,,
-	"""
-
-	defer = kwargs.pop('defer', False)
-
+def make_base(**kwargs) -> Type[_Meta]:
 	mcs: Type[_Meta] = type(
-		'metaclass',
-		(_Meta,),
-		{
-			'__client_conf__': kwargs,
-			'__defer__': defer
-		}
+		'metaclass', (_Meta,), {'__client_conf__': kwargs}
 	)
 
-	class _TableClass(_Table, metaclass=mcs):
+	class BaseTableClass(_Table, metaclass=mcs):
 		__slots__ = _Table.__slots__
-		__is_table_class__ = True
 
 		def __getattribute__(self, item):
 			super_value = _Table.__getattribute__(self, item)
@@ -174,4 +182,6 @@ def make_base(**kwargs) -> Type[_Table]:
 
 			return _
 
-	return _TableClass  # type: Type[_Table]
+	mcs.base_table_cls = mcs.model = BaseTableClass
+
+	return mcs

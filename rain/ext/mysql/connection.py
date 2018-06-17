@@ -293,6 +293,8 @@ class Connection(object):
 		if isinstance(sql, str):
 			sql = sql.encode(self.encoding)
 
+		sql = sql.strip()
+
 		packet_size = len(sql) + 1
 		if packet_size > MAX_PACKET_LEN:
 			raise MysqlError(3, "Your sql is too too too too large")
@@ -319,7 +321,7 @@ class Connection(object):
 		result.fields = {}
 		result.rows = []
 
-		first_packet = await self.execute(sql)
+		first_packet = await self.execute_command(COMMAND.COM_QUERY, sql)
 
 		fields_count = first_packet.read_length_encoded_integer()
 		result.fields_count = fields_count
@@ -369,31 +371,34 @@ class Connection(object):
 		).is_ok()
 
 	async def use(self, db):
-		return (await self.execute_command(COMMAND.COM_INIT_DB, db)).is_ok()
+		await self.execute_command(COMMAND.COM_INIT_DB, db)
 
 	async def create_db(self, db):
 		try:
-			packet = await self.execute_command(COMMAND.COM_QUERY, 'CREATE DATABASE {}'.format(db))
+			await self.execute_command(COMMAND.COM_QUERY, 'CREATE DATABASE {}'.format(db))
 		except MysqlError as e:
 			if e.error_no == ER.DB_CREATE_EXISTS:
-				return True
+				return
 			raise
-
-		return packet.is_ok()
 
 	async def create_table(self, sql):
 		try:
-			packet = await self.execute(sql)
+			await self.execute(sql)
 		except MysqlError as e:
 			if e.error_no == ER.TABLE_EXISTS_ERROR:
-				return True
-
+				return
 			raise
 
-		return packet.is_ok()
+	async def create_index(self, sql):
+		try:
+			await self.execute(sql)
+		except MysqlError as e:
+			if e.error_no == ER.DUP_KEYNAME:
+				return
+			raise
 
 	async def set_autocommit(self, acm):
-		return await self.execute(b'SET AUTOCOMMIT=' + str(acm).encode())
+		await self.execute(b'SET AUTOCOMMIT=' + str(acm).encode())
 
 	async def begin(self):
 		await self.execute(b'BEGIN')

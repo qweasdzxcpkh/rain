@@ -1,5 +1,6 @@
+from rain.utils.funcwrap import cachedproperty
 from rain.ext.orm.escape import escape_string
-from rain.ext.orm.op import OP, Alias
+from rain.ext.orm.op import OP
 
 _default = object()
 
@@ -9,7 +10,7 @@ class Field(object):
 		'name', 'nullable',
 		'is_primary', 'unique',
 		'default', 'onupdate',
-		'index_key', 'op',
+		'index_key', '_op',
 		'tbl'
 	)
 
@@ -30,11 +31,18 @@ class Field(object):
 		self.index_key = index_key
 		self.onupdate = on_update
 
-		self.op = OP(self)
+		self._op = None
 		self.tbl = None
 
 	def __str__(self):
 		return '{}.{}'.format(self.tbl.__table_name__, self.name)
+
+	@property
+	def op(self):
+		if self._op is None:
+			self._op = OP(self)
+
+		return self._op
 
 	def _type_for_create(self):
 		return self.sql_type

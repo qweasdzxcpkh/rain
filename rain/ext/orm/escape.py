@@ -1,7 +1,7 @@
-import re
 from decimal import Decimal
+from datetime import datetime, timedelta
 
-_quote_regexp = re.compile(r'[\'\"]')
+_datetime_format = '%Y-%m-%d %H:%M:%S'
 
 
 def escape_string(txt):
@@ -40,4 +40,14 @@ def escape(val):
 	if isinstance(val, str):
 		return escape_string(val)
 
+	if isinstance(val, (datetime, timedelta)):
+		return escape_string(val.strftime(_datetime_format))
+
 	return escape_string(str(val))
+
+
+def escape_for_select(val):
+	if isinstance(val, bytes):
+		return escape_string(val.decode())
+
+	return escape(val)

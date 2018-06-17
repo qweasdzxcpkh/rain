@@ -61,10 +61,19 @@ class Mysql(object):
 
 		return connection
 
+	def conn_ctx(self):
+		return self.pool.conn_ctx()
+
+	def tran_ctx(self, rollback_on_error=True):
+		if self.autocommit:
+			raise ValueError('CLIENT IS IN AUTO_COMMIT MODE')
+
+		return self.pool.tran_ctx(rollback_on_error=rollback_on_error)
+
 	async def query(self, sql):
-		with (await self.pool.acquire()) as conn:
+		async with self.conn_ctx() as conn:
 			return await conn.query(sql)
 
 	async def execute(self, sql):
-		with (await self.pool.acquire()) as conn:
+		async with self.conn_ctx() as conn:
 			await conn.execute_command(COMMAND.COM_QUERY, sql)
