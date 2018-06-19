@@ -74,10 +74,10 @@ class Cookie(dict):
 		return d
 
 
-def _mp_parse(lines, boundary, md5=False):
+def _mp_parse(lines, boundary, hash_method=''):
 	form = FormData()
 	files = FormFiles()
-	file_cls = HashFormFile if md5 else FormFile
+	file_cls = HashFormFile if hash_method else FormFile
 
 	if not boundary or not lines:
 		return form, files
@@ -99,8 +99,10 @@ def _mp_parse(lines, boundary, md5=False):
 				current_file.write_last_line()
 				file_list.append(current_file)
 				current_file = file_cls()
+				current_file.set_m(hash_method)
 			else:
 				current_file = file_cls()
+				current_file.set_m(hash_method)
 			continue
 
 		if in_file_description:
@@ -139,17 +141,11 @@ def _mp_parse(lines, boundary, md5=False):
 
 class Request(object):
 	__slots__ = (
-		'hv', 'method',
-		'path', 'handler',
-		'query_string',
-		'_boundary', 'time',
-		'headers', '_remote',
-		'_f', '_body_lines',
-		'_body_length',
-		'_form_files',
-		'_form_data',
-		'parse_error',
-		'need_file_hash'
+		'hv', 'method', 'path', 'handler',
+		'query_string', '_boundary', 'time',
+		'headers', '_remote', '_f', '_body_lines',
+		'_body_length', '_form_files',
+		'_form_data', 'parse_error', 'file_hash_method'
 	)
 
 	remote_addr_key = None
@@ -164,7 +160,7 @@ class Request(object):
 		self.query_string = None
 
 		self.headers = {}
-		self.need_file_hash = False
+		self.file_hash_method = ''
 
 		self._remote = None
 
@@ -178,7 +174,7 @@ class Request(object):
 		self.parse_error = None
 
 	def __repr__(self):
-		return '<{} {} {}>'.format(self.__class__.__name__, self.method, self.path)
+		return '<{} {} {} {}>'.format(self.__class__.__name__, self.remote_addr, self.method, self.path)
 
 	@property
 	def remote_addr(self):
@@ -204,6 +200,10 @@ class Request(object):
 		return FormData.load(self.query_string)
 
 	@cachedproperty
+	def keepalive(self):
+		return self.headers.get('connection').lower() == 'keep-alive' and self.hv > '1.0'
+
+	@cachedproperty
 	def cookie(self) -> Cookie:
 		return Cookie.load(self.headers.get('cookie'))
 
@@ -225,7 +225,7 @@ class Request(object):
 			return FormData.load(_.decode('latin1', 'ignore'))
 		else:  # form-data
 			if self._form_data is _real_none:
-				self._form_data, self._form_files = _mp_parse(self._body_lines, self._boundary, self.need_file_hash)
+				self._form_data, self._form_files = _mp_parse(self._body_lines, self._boundary, self.file_hash_method)
 				del self._body_lines
 
 			return self._form_data
@@ -240,9 +240,8 @@ class Request(object):
 
 class Response(object):
 	__slots__ = (
-		'time', 'status',
-		'headers', 'cookie',
-		'body', 'empty'
+		'time', 'status', 'headers', 'cookie',
+		'body', 'empty', 'req'
 	)
 
 	def __init__(self, status, headers=None, cookie=None, body=None, empty=False):
@@ -250,6 +249,7 @@ class Response(object):
 
 		self.status = status
 		self.headers = headers or {}
+		self.req: Request = None
 
 		self.cookie = cookie  # type: Cookie
 
@@ -275,13 +275,14 @@ class Response(object):
 			if isinstance(self.body, bytes):
 				_b = self.body
 			else:
-				_b = str(self.body).encode('utf8', 'ignore')
+				self.body = str(self.body)
+				_b = self.body.encode('utf8', 'ignore')
 
 			self.headers['Content-Length'] = len(self.body)
 
-		_ = ['HTTP/1.0 {} {}'.format(self.status, reason)]
-		if self.headers:
-			_ += list(map(lambda item: '{}: {}'.format(*item), self.headers.items()))
+		_ = ['HTTP/{} {} {}'.format(self.req.hv, self.status, reason)]
+		self.headers['Connection'] = self.req.headers.get('connection')
+		_ += list(map(lambda item: '{}: {}'.format(*item), self.headers.items()))
 
 		if self.cookie is not None:
 			if self.cookie.a:
@@ -298,7 +299,7 @@ class Response(object):
 		return b'\r\n'.join(_)
 
 	@classmethod
-	def json(cls, status, data, cookie=None, ensure_ascii=False, dump_cls=None):
+	def json(cls, data, status=200, cookie=None, ensure_ascii=False, dump_cls=None):
 		return cls(
 			status,
 			cookie=cookie,
@@ -307,15 +308,15 @@ class Response(object):
 		)
 
 	@classmethod
-	def html(cls, status, html, cookie=None):
+	def html(cls, html, status=200, cookie=None):
 		return cls(status, body=html, cookie=cookie, headers={'Content-Type': 'text/html'})
 
 	@classmethod
-	def make_res(cls, res):
+	def make_res(cls, res, status=200, headers=None):
 		if not isinstance(res, Response):
-			status = 200
+			status = status
 			body = res
-			headers = None
+			headers = headers or {}
 
 			if isinstance(res, tuple):
 				status, *others = res

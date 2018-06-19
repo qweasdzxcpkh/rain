@@ -21,18 +21,23 @@ class Rain(object):
 			self,
 			name='Rain',
 			view_paths=None,
-			vmap_case='00',
 			find_view_func=None,
 			templates_path='./templates',
 			debug=False,
 			**kwargs
 	):
+		"""
+		:param view_paths:
+		:param find_view_func:
+
+		you should set a find_view_func if you set many view_path.
+		"""
+
 		self.name = name
 		self.debug = debug
 
 		self.router = BaseRouter(
 			view_paths,
-			vmap_case=vmap_case,
 			find_map_func=find_view_func
 		)
 		self.router.load()
@@ -129,9 +134,10 @@ class Rain(object):
 			res = parse_error.make_response()
 
 		res = self.response_cls.make_res(res)
+		res.req = request
 
 		res.empty = empty
-		if res.status in [204, 206]:
+		if abs(res.status - 205) == 1:  # 204, 206
 			res.empty = True
 
 		res.cookie = request.cookie

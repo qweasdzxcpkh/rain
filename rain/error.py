@@ -48,10 +48,6 @@ class MethodNotAllowError(HTTPError):
 	status = 405
 
 
-class RequestTimeoutError(HTTPError):
-	status = 408
-
-
 class LengthRequiredError(HTTPError):
 	status = 411
 
@@ -79,10 +75,6 @@ class ServerError(HTTPError):
 			d = self.file.read()
 
 		return s, d, h
-
-
-class ResponseTimeoutError(HTTPError):
-	status = 504
 
 
 class TplError(HTTPError):

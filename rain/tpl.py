@@ -1,8 +1,7 @@
 import os
 from html import escape
 
-from rain.error import TplError, TplOrderError, TplParseError
-from rain.utils import AttrDict
+from rain.error import TplOrderError, TplParseError
 
 __plk__ = object()
 
@@ -14,6 +13,17 @@ DEFAULT_BUILTINS = {
 	'len': len,
 	'abs': abs, 'round': round
 }
+
+
+class _Dict(dict):
+	def init(self, data):
+		for k, v in data.items():
+			if isinstance(v, dict) and not isinstance(v, _Dict):
+				self[k] = _Dict().init(v)
+			else:
+				self[k] = v
+
+		return self
 
 
 class _OrderSign(object):
@@ -51,7 +61,7 @@ class _Order(object):
 
 		self.parent = None
 		self.children = []
-		self._locals = AttrDict()
+		self._locals = _Dict()
 
 	def __repr__(self):
 		return '<{0:16} LEFT: {1} RIGHT: {2} TXT: {3} >'.format(
@@ -86,13 +96,14 @@ def _render_children(lst, cs):
 			lst.append(str(c))
 
 
-def _add_plocal(data, r):
+def _add_plocal_to_target(data, r):
+	if __plk__ in data:
+		_add_plocal_to_target(data.pop(__plk__), r)
+
 	for k, v in data.items():
 		if k != __plk__ and k not in r:
 			r[k] = v
 
-	if __plk__ in data:
-		_add_plocal(data.pop(__plk__), r)
 	return r
 
 
@@ -108,9 +119,21 @@ def _eval(order: _Order):
 
 	data = {} if type(order) is str else order.locals
 
-	d = {'__builtins__': builtins}
-	d.update(data)
-	d = _add_plocal(d, {})
+	__ = order.parent
+	while True:
+		if isinstance(__, _Order):
+			_add_plocal_to_target(getattr(__, '_locals', {}), data)
+		else:
+			break
+
+		__ = getattr(__, 'parent', None)
+
+	_ = order.pr.base
+	while _:
+		_add_plocal_to_target(_.locals, data)
+		_ = _.base
+
+	d = _add_plocal_to_target(data, {'__builtins__': builtins})
 
 	try:
 		return eval(getattr(order, 'code', getattr(order, 'txt')), d)
@@ -160,13 +183,19 @@ class _ExecutableOrder(_Order):
 		od = od.lower()
 
 		if not od.startswith('end'):
-			no = _ExecutableOrder.all[od.lower()](self.left)
+			no = _ExecutableOrder.all[od](self.left)
 			for k, v in vars(self).items():
 				setattr(no, k, v)
 
 			return no
 		else:
 			return _EndOrder(od[3:])
+
+	@classmethod
+	def register(cls, new_cls):
+		cls.all[new_cls.__order__] = new_cls
+
+		return new_cls
 
 
 class _UseFileOrder(_ExecutableOrder):
@@ -190,6 +219,7 @@ class _UseFileOrder(_ExecutableOrder):
 		self.target_filename = filename
 
 
+@_ExecutableOrder.register
 class _IncludeOrder(_UseFileOrder):
 	__order__ = 'include'
 
@@ -213,6 +243,7 @@ class _IncludeOrder(_UseFileOrder):
 		return pr.render(self.locals)
 
 
+@_ExecutableOrder.register
 class _ExtendsOrder(_UseFileOrder):
 	__order__ = 'extends'
 
@@ -220,23 +251,21 @@ class _ExtendsOrder(_UseFileOrder):
 		if self.target_filename == self.pr.name:
 			raise TplOrderError(self, 'ExtendSelf Error')
 
+		if self.pr.base and self.pr.base.name in list(
+				map(lambda x: x.name, self.pr.get_exts())
+		):
+			raise TplOrderError(self, 'Multiple Extends Error')
+
 		if not self.pr.base:
 			self.pr.base = self.parse(
 				self.target_filename,
 				self.pr.config()
 			)
 
-		if self.pr.base.name in list(
-				map(
-					lambda x: x.name,
-					self.pr.get_exts()
-				)
-		):
-			raise TplOrderError(self, 'Multiple Extends Error')
-
 		return ''
 
 
+@_ExecutableOrder.register
 class _BlockOrder(_ExecutableOrder):
 	__order__ = 'block'
 
@@ -253,6 +282,7 @@ class _BlockOrder(_ExecutableOrder):
 		return ''.join(cache)
 
 
+@_ExecutableOrder.register
 class _ForOrder(_ExecutableOrder):
 	__order__ = 'for'
 
@@ -294,12 +324,13 @@ class _ForOrder(_ExecutableOrder):
 
 			d.update(zip(self.loop_vars, item))
 
-			self._locals.update(AttrDict().init(d))
+			self._locals.update(_Dict().init(d))
 			_render_children(cache, self.children)
 
 		return ''.join(cache)
 
 
+@_ExecutableOrder.register
 class _IfOrder(_ExecutableOrder):
 	__order__ = 'if'
 
@@ -327,6 +358,7 @@ class _IfOrder(_ExecutableOrder):
 		return ''.join(cache)
 
 
+@_ExecutableOrder.register
 class _ElOrder(_ExecutableOrder):
 	def __init__(self, left, right=None):
 		super().__init__(left, right)
@@ -339,6 +371,7 @@ class _ElOrder(_ExecutableOrder):
 		return ''.join(cache)
 
 
+@_ExecutableOrder.register
 class _ElifOrder(_ElOrder):
 	__order__ = 'elif'
 
@@ -348,6 +381,7 @@ class _ElifOrder(_ElOrder):
 		self.if_order.elifs.append(self)
 
 
+@_ExecutableOrder.register
 class _ElseOrder(_ElOrder):
 	__order__ = 'else'
 
@@ -357,6 +391,7 @@ class _ElseOrder(_ElOrder):
 		self.if_order.else_ = self
 
 
+@_ExecutableOrder.register
 class _SetOrder(_ExecutableOrder):
 	__order__ = 'set'
 
@@ -390,6 +425,7 @@ class _SetOrder(_ExecutableOrder):
 		return ''
 
 
+@_ExecutableOrder.register
 class _ImportOrder(_ExecutableOrder):
 	__order__ = '__import__'
 
@@ -444,7 +480,7 @@ class _ParseResult(object):
 
 		self.children = []
 
-		self.locals = AttrDict()
+		self.locals = _Dict()
 
 		self._config = config or {}
 
@@ -482,10 +518,7 @@ class _ParseResult(object):
 
 		return exts
 
-	def pre_render(self, data=None):
-		if data:
-			self.locals = AttrDict().init(data)
-
+	def pre_render(self):
 		self._html = []
 		for c in self.children:
 			if isinstance(c, _Order):
@@ -494,9 +527,10 @@ class _ParseResult(object):
 				self._html.append(str(c))
 
 	def render(self, data=None):
-		self.locals = AttrDict().init(data or {})
+		self.locals = _Dict().init(data or {})
 
 		self.pre_render()
+
 		if not self.base:
 			exts = self.get_exts()
 
@@ -507,9 +541,7 @@ class _ParseResult(object):
 
 			for name, block in blocks.items():
 				if name not in self.blocks:
-					raise TplOrderError(
-						block, 'No statement block name <{0}>'.format(name)
-					)
+					raise TplOrderError(block, 'No statement block name <{0}>'.format(name))
 
 				self._html[self.blocks[name]] = block
 
@@ -523,7 +555,7 @@ class _ParseResult(object):
 			return ''.join([(x.render_() if type(x) is _BlockOrder else x) for x in self._html])
 
 		self.base.ext = self
-		return self.base.render
+		return self.base.render()
 
 
 class Stack(object):
@@ -750,4 +782,5 @@ class Tpl(object):
 
 	def render(self, data, builtins=None):
 		self.pr.set_config('BUILTINS', builtins or {})
+
 		return self.pr.render(data)

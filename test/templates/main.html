@@ -1,11 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<title>{{ name }}</title>
-</head>
-<body>
-{# Spring #}
-{{ content }}
-</body>
-</html>
+{% extends "base.html" %}
+
+{% set qwer = 456 %}
+
+{% block head %}
+    <title>{{ name }}</title>
+{% endblock %}
+
+{% block main %}
+    {% set qwer = 789 %}
+    {# Spring #}
+    {{ content }}---{{ time.strftime('%Y-%m-%d %H:%M:%S') }}--{{ str(qwer) }}
+
+    {% set count = 5 %} {# will be rewrited in "items.html" #}
+    {% include "items.html" %}
+{% endblock %}

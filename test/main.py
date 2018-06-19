@@ -15,7 +15,6 @@ app = Rain(
 			'name': 'default'
 		}
 	],
-	vmap_case='',
 	port=8080,
 	debug=True
 )

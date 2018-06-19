@@ -39,7 +39,6 @@ class BaseRouter(object):
 	def __init__(self, view_paths, vmap_case='00', find_map_func=None):
 		self.maps = {}
 		self.view_path = view_paths
-		self.vmap_case = vmap_case
 		self.find_map = find_map_func if callable(find_map_func) else lambda x: list(self.maps.values())[0]
 
 		self.tpl_dir_path = None
@@ -56,9 +55,6 @@ class BaseRouter(object):
 			vn = vp[len(vdn) + 1:]
 			load_views(vn, dir_path=vdn, m=m)
 			self.maps[name] = m
-
-		if len(self.maps) < 2:
-			self.vmap_case = '00'
 
 		return self
 

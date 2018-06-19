@@ -128,19 +128,23 @@ class FormFile(BytesIO):
 
 		self._ok = True
 
+	def set_m(self, method):
+		pass
+
 
 class HashFormFile(FormFile):
-	hash_method = hashlib.md5
-
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 
 		self._m = None
 
+	def set_m(self, method):
+		self._m = getattr(hashlib, method)()
+
 	@property
-	def md5(self):
+	def hash(self):
 		if not self._ok:
-			return ''
+			raise RuntimeError('File is not ok')
 
 		if not isinstance(self._m, str):
 			self._m = self._m.hexdigest()
@@ -150,11 +154,7 @@ class HashFormFile(FormFile):
 	def _write(self, l):
 		super()._write(l)
 
-		if self._m is None:
-			self._m = self.hash_method()
-
 		self._m.update(l)
 
 
-class FormFiles(FormData):
-	pass
+FormFiles = FormData

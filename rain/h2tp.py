@@ -1,9 +1,9 @@
 import asyncio
 from asyncio.streams import StreamReader
 
+from rain.utils.funcwrap import cachedproperty
 from rain.clses import Request
-from rain.error import BadRequestError, UnsupportedMediaTypeError, LengthRequiredError, EntityTooLargeError, \
-	RequestTimeoutError, ResponseTimeoutError
+from rain.error import BadRequestError, UnsupportedMediaTypeError, LengthRequiredError, EntityTooLargeError
 
 max_request_wait_length = 15  # s
 
@@ -37,7 +37,9 @@ def _parse_first_line(line):
 		q = qs
 		s = None
 
-	return method.upper(), q, s, hv.rstrip()
+	hv = hv.rstrip().split('/')[-1]
+
+	return method.upper(), q, s, hv
 
 
 def _parse_header_line(line, req):
@@ -72,30 +74,38 @@ class HTTPProtocol(asyncio.Protocol):
 	def __init__(self, app=None):
 		self.app = app
 		self.router = app.router
-		self.vmap_case = self.router.vmap_case
 		self.transport = None
 		self.reader = None
 		self.writer = None
-		self.request = None  # type: Request
+		self._request: Request = None
 		self.keep_alive = False
 		self.loop = asyncio.get_event_loop()
 
+	@property
+	def request(self):
+		if self._request is None:
+			self._request = Request()
+			self._request.remote_addr = self.remoteaddr
+
+		return self._request
+
+	@cachedproperty
+	def remoteaddr(self):
+		return '{}:{}'.format(*self.transport.get_extra_info('peername'))
+
+	def _del_req(self):
+		self._request = None
+
 	def connection_made(self, transport):
-		self.request = Request()
 		self.reader = StreamReader(loop=self.loop)
 		self.transport = transport
 
-		self.request.remote_addr = '{}:{}'.format(*transport.get_extra_info('peername'))
+		self.request.remote_addr = self.remoteaddr
 		self.reader.set_transport(transport)
+
 		self.loop.create_task(self.parse())
 
-	def connection_lost(self, exc):
-		pass
-
 	def data_received(self, data):
-		if self.request is None:
-			self.request = Request()
-
 		self.reader.feed_data(data)
 
 	# noinspection PyProtectedMember
@@ -112,10 +122,6 @@ class HTTPProtocol(asyncio.Protocol):
 					return await self.finish()
 
 				req.method, req.path, req.query_string, req.hv = _
-				if self.vmap_case == '00':
-					req.handler = self.router.find_handler(req)
-					if not callable(req.handler):
-						return await self.finish()
 			else:
 				if req._body_length:
 					req._body_lines.append(line)
@@ -126,11 +132,6 @@ class HTTPProtocol(asyncio.Protocol):
 						return await self.finish()
 				else:
 					if line == b'\r\n':
-						if self.vmap_case == '10':
-							req.handler = self.router.find_handler(req)
-							if not callable(req.handler):
-								return await self.finish()
-
 						if req.method in {'GET', 'HEAD'} or not req.content_length:
 							return await self.finish()
 
@@ -146,9 +147,14 @@ class HTTPProtocol(asyncio.Protocol):
 		req = self.request
 		delattr(req, '_f')
 		delattr(req, '_body_length')
-		self.request = None
+		self._del_req()
 
 		await self.app.handle(req, self)
+
+		if req.keepalive:
+			await self.parse()
+		else:
+			self.transport.close()
 
 	def send(self, bs):
 		self.transport.write(bs)

@@ -15,3 +15,5 @@ ascii_logo = ASCII_LOGO = '''
 desc = DESC = "A simple async http api server."
 
 from rain.app import Rain
+from rain.clses import Request, Response, Cookie
+from rain.error import RainError, HTTPError
