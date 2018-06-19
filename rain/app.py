@@ -6,7 +6,7 @@ from inspect import isawaitable
 from rain import ascii_logo
 from rain.g import G
 from rain.router import BaseRouter
-from rain.clses import Response
+from rain.clses import Response, Request
 from rain.h2tp import HTTPProtocol
 from rain.error import HTTPError, ServerError
 from rain.utils.color import Color
@@ -16,6 +16,9 @@ class Rain(object):
 	protocol_cls = HTTPProtocol
 	response_cls = Response
 	router_cls = BaseRouter
+	request_cls = Request
+
+	listen_all = False
 
 	def __init__(
 			self,
@@ -57,6 +60,10 @@ class Rain(object):
 		G.DEBUG = debug
 		G.HOST = kwargs.get('host')
 		G.PORT = kwargs.get('port')
+		self.protocol_cls.request_cls = self.request_cls
+
+		if G.HOST == '0.0.0.0' and not self.listen_all:
+			raise ValueError('Rain is can not listen 0.0.0.0, please use Nginx.')
 
 	def run(self, use_ascii_logo=True, show_router=False):
 		if self.debug:
@@ -64,8 +71,6 @@ class Rain(object):
 
 		for fn in self._before_start_funcs:
 			_ = fn()
-			if isawaitable(_):
-				self.loop.run_until_complete(_)
 
 		self._server = self.loop.run_until_complete(
 			self.loop.create_server(

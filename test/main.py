@@ -5,10 +5,18 @@ __project_path = os.path.dirname(os.getcwd())
 if __project_path not in sys.path:
 	sys.path.insert(0, __project_path)
 
-from rain import Rain
+from rain import Rain, Request
+
+
+class _Req(Request):
+	def __init__(self):
+		super().__init__()
+
+
+Rain.request_cls = _Req
 
 app = Rain(
-	host='localhost',
+	host='0.0.0.0',
 	view_paths=[
 		{
 			'path': './views',

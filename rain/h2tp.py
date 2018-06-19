@@ -71,6 +71,8 @@ def _parse_header_line(line, req):
 
 
 class HTTPProtocol(asyncio.Protocol):
+	request_cls = Request
+
 	def __init__(self, app=None):
 		self.app = app
 		self.router = app.router
@@ -84,7 +86,7 @@ class HTTPProtocol(asyncio.Protocol):
 	@property
 	def request(self):
 		if self._request is None:
-			self._request = Request()
+			self._request = self.request_cls()
 			self._request.remote_addr = self.remoteaddr
 
 		return self._request
