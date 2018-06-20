@@ -1,6 +1,6 @@
 import asyncio
 
-from rain.ext.redis.utils import parse_packet
+from rain.ext.redis.utils import parse_packet, escape
 
 
 class RedisProtocol(asyncio.Protocol):
@@ -15,8 +15,9 @@ class RedisProtocol(asyncio.Protocol):
 		self.future.set_result(parse_packet(data))
 
 	async def send(self, *args):
-		self.transport.write(b' '.join(args))
+		self.transport.write(b' '.join(map(escape, args)))
 		self.transport.write(b'\r\n')
+
 		self.future = asyncio.Future()
 
 		return await self.future

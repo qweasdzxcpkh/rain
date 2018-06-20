@@ -16,7 +16,6 @@ class _Req(Request):
 Rain.request_cls = _Req
 
 app = Rain(
-	host='0.0.0.0',
 	view_paths=[
 		{
 			'path': './views',

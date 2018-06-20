@@ -1,3 +1,18 @@
+from rain.utils.escape import escape_string
+
+__error_cls = None
+
+
+def _import_error_cls():
+	global __error_cls
+	if __error_cls is None:
+		from rain.ext.redis.base import RedisError
+
+		__error_cls = RedisError
+
+	return __error_cls
+
+
 REDIS_SIMPLE = int.from_bytes(b'+', 'little')
 REDIS_ERROR = int.from_bytes(b'-', 'little')
 REDIS_INTEGERS = int.from_bytes(b':', 'little')
@@ -5,29 +20,11 @@ REDIS_BILK = int.from_bytes(b'$', 'little')
 REDIS_ARRAY = int.from_bytes(b'*', 'little')
 
 
-def utf8(s):
-	s = str(s)
+def escape(s):
+	if isinstance(s, bytes):
+		return s
 
-	h = s[0]
-	t = s[-1]
-	e = ' ' in s
-
-	_ = None
-
-	if h == t:
-		if h == '"':
-			_ = "'{}'".format(s)
-		elif h == "'":
-			_ = '"{}"'.format(s)
-
-	if _ is None and e:
-		_ = "'{}'".format(s)
-
-	return (_ or s).encode()
-
-
-def to_bytes(obj):
-	return str(obj).encode('utf8')
+	return escape_string(str(s)).encode()
 
 
 def _parse_simple(data):
@@ -35,7 +32,9 @@ def _parse_simple(data):
 
 
 def _parse_error(data):
-	return data.strip().decode('utf8')
+	raise _import_error_cls()(
+		data.strip().decode('utf8')
+	)
 
 
 def _parse_integers(data):

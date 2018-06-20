@@ -58,12 +58,12 @@ class Rain(object):
 
 		G.APP = self
 		G.DEBUG = debug
-		G.HOST = kwargs.get('host')
+		G.HOST = kwargs.get('host', 'localhost')
 		G.PORT = kwargs.get('port')
 		self.protocol_cls.request_cls = self.request_cls
 
 		if G.HOST == '0.0.0.0' and not self.listen_all:
-			raise ValueError('Rain is can not listen 0.0.0.0, please use Nginx.')
+			raise ValueError('Rain is can not listen "0.0.0.0", please use Nginx.')
 
 	def run(self, use_ascii_logo=True, show_router=False):
 		if self.debug:
@@ -90,8 +90,8 @@ class Rain(object):
 ********************************************************************************
 			""".format(
 				Color(ascii_logo if use_ascii_logo else 'Rain').fg(Color.LCYAN),
-				self._kwargs.get('host'),
-				self._kwargs.get('port'),
+				G.HOST,
+				G.PORT,
 				os.getpid(),
 				self.debug,
 				self.router.render() if show_router else ''
