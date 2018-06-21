@@ -27,12 +27,12 @@
         |
         ---- /redis         a simple async redis client
 
-# rain
+# Rain
 >
 
     cd test && python main.py
 
-# mysql
+# Mysql
 >
 
     import asyncio
@@ -51,7 +51,7 @@
     
     loop.run_until_complete(test())
     
-# redis
+# Redis
 >
 
     import asyncio
