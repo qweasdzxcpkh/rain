@@ -1,7 +1,17 @@
 from traceback import print_exc
 
-from rain.g import G
 from rain.utils import FakeTextFile
+
+__g = None
+
+
+def _imp_g():
+	global __g
+	from rain import g
+
+	__g = g
+
+	return __g
 
 
 # noinspection PyMethodMayBeStatic
@@ -71,7 +81,7 @@ class ServerError(HTTPError):
 
 	def make_response(self, **kwargs):
 		s, d, h = super().make_response(**kwargs)
-		if G.DEBUG:
+		if _imp_g().debug:
 			d = self.file.read()
 
 		return s, d, h
@@ -89,7 +99,7 @@ class TplError(HTTPError):
 
 	def make_response(self, **kwargs):
 		s, d, h = super().make_response(**kwargs)
-		if G.DEBUG:
+		if _imp_g().debug:
 			d = 'TplFileName: {}; LineNo: {}; Error: {}'.format(
 				self.file, self.lineno, self.error
 			)

@@ -11,9 +11,6 @@ class ListRow(_Row, list):
 		list.append(self, value)
 
 
-_real_none = object()
-
-
 class DictRow(_Row, dict):
 	def append(self, field, value):
 		self[field.name] = value

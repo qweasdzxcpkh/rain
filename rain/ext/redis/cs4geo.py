@@ -4,16 +4,16 @@ from rain.ext.redis.base import BaseMix
 class GEOMix(BaseMix):
 	async def geoadd(self, key, *lolam):
 		assert lolam and len(lolam) % 3 == 0
-		return await self.protocol.send(b'GEOADD', key, *lolam)
+		return await self._send(b'GEOADD', key, *lolam)
 
 	async def geopos(self, key, *members):
 		assert members
-		return await self.protocol.send(b'GEOPOS', key, *members)
+		return await self._send(b'GEOPOS', key, *members)
 
 	async def geodist(self, key, m1, m2, unit='m'):
 		unit = unit.lower()
 		assert unit in {'m', 'km', 'mi', 'ft'}
-		return await self.protocol.send(b'GEODIST', key, m1, m2, unit)
+		return await self._send(b'GEODIST', key, m1, m2, unit)
 
 	async def georadius(
 			self, key, lo, la, radius,
@@ -39,7 +39,7 @@ class GEOMix(BaseMix):
 		if count is not None:
 			_.append('COUNT {}'.format(count))
 
-		return self.protocol.send(b'GEORADIUS', key, lo, la, radius, unit, *_)
+		return self._send(b'GEORADIUS', key, lo, la, radius, unit, *_)
 
 	async def georadiusbymember(
 			self, key, member, radius,
@@ -65,8 +65,8 @@ class GEOMix(BaseMix):
 		if count is not None:
 			_.append('COUNT {}'.format(count))
 
-		return self.protocol.send(b'GEORADIUS', key, member, radius, unit, *_)
+		return self._send(b'GEORADIUS', key, member, radius, unit, *_)
 
 	async def geohash(self, key, *members):
 		assert members
-		return self.protocol.send(b'GEOHASH', key, *members)
+		return self._send(b'GEOHASH', key, *members)

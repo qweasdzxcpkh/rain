@@ -23,7 +23,11 @@ app = Rain(
 		}
 	],
 	port=8080,
-	debug=True
+	debug=True,
+	mysql_host='192.168.55.15',
+	mysql_database='mysql',
+	mysql_user='root',
+	redis_db=1
 )
 
 

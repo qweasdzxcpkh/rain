@@ -12,7 +12,7 @@ class Mysql(object):
 	def __init__(
 			self,
 			host='localhost', port=3306,
-			pool_class=Pool, pool_size=5,
+			pool_class=Pool, pool_size=5, pool_recycle=7200,
 			user=None, password=None, database=None,
 			charset='latin1',
 			autocommit=False,
@@ -22,7 +22,6 @@ class Mysql(object):
 		self.host = host
 		self.port = port
 		self.loop = asyncio.get_event_loop()
-		self.pool_size = pool_size
 
 		self.db = database
 		self.user = user
@@ -44,21 +43,17 @@ class Mysql(object):
 
 		self.converters = mysql_decoders
 
-		_ = []
-		for i in range(pool_size):
-			_.append(self._make_connection())
-
-		self.pool: Pool = pool_class(*_)
-
-	def _make_connection(self):
-		connection = Connection(
-			self, *self.loop.run_until_complete(
-				asyncio.open_connection(host=self.host, port=self.port)
-			)
+		assert pool_recycle > 600
+		self.pool: Pool = pool_class(
+			pool_size,
+			self._make_connection,
+			pool_recycle
 		)
 
-		self.loop.run_until_complete(connection.init())
-
+	async def _make_connection(self):
+		_ = await asyncio.open_connection(host=self.host, port=self.port)
+		connection = Connection(self, *_)
+		await connection.init()
 		return connection
 
 	def conn_ctx(self):

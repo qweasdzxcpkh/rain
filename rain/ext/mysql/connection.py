@@ -1,12 +1,12 @@
 import io
-from asyncio.streams import StreamReader, StreamWriter
+import time
 import struct
+from asyncio.streams import StreamReader, StreamWriter
 import hashlib
 from functools import partial
 
 from rain.ext.mysql.charset import charset_by_id, charset_by_name
 from rain.ext.mysql.constants import CLIENT, COMMAND, ER
-from rain.ext.mysql.utils import int2byte, byte2int
 
 from rain.ext.mysql.error import MysqlError
 from rain.ext.mysql.pakcet import MysqlPacket
@@ -14,6 +14,17 @@ from rain.ext.mysql.result import QueryResult
 
 sha_new = partial(hashlib.new, 'sha1')
 SCRAMBLE_LENGTH = 20
+
+
+def byte2int(b):
+	if isinstance(b, int):
+		return b
+	else:
+		return struct.unpack("!B", b)[0]
+
+
+def int2byte(i):
+	return struct.pack("!B", i)
 
 
 def _my_crypt(message1, message2):
@@ -142,6 +153,8 @@ class Connection(object):
 		self.server_auth_plugin_name = None
 
 		self._next_seq_id = 0
+
+		self.init_time = None
 
 	def next_seq_id(self):
 		_ = (self._next_seq_id + 1) % 256
@@ -289,7 +302,9 @@ class Connection(object):
 		await self.do_auth()
 		await self.set_autocommit(self.client.autocommit)
 
-	async def execute_command(self, command, sql):
+		self.init_time = int(time.time())
+
+	async def _execute_command(self, command, sql):
 		if isinstance(sql, str):
 			sql = sql.encode(self.encoding)
 
@@ -314,14 +329,14 @@ class Connection(object):
 		return packet
 
 	async def execute(self, sql):
-		await self.execute_command(COMMAND.COM_QUERY, sql)
+		await self._execute_command(COMMAND.COM_QUERY, sql)
 
 	async def query(self, sql):
 		result = self.query_result_class()
 		result.fields = {}
 		result.rows = []
 
-		first_packet = await self.execute_command(COMMAND.COM_QUERY, sql)
+		first_packet = await self._execute_command(COMMAND.COM_QUERY, sql)
 
 		fields_count = first_packet.read_length_encoded_integer()
 		result.fields_count = fields_count
@@ -361,21 +376,21 @@ class Connection(object):
 
 	async def ping(self):
 		begin = self.loop.time()
-		packet = await self.execute_command(COMMAND.COM_PING, b'')
+		packet = await self._execute_command(COMMAND.COM_PING, b'')
 
 		return packet.is_ok() and self.loop.time() - begin
 
 	async def kill(self, thread_id):
 		return (
-			await self.execute_command(COMMAND.COM_PROCESS_KILL, struct.pack('<I', thread_id))
+			await self._execute_command(COMMAND.COM_PROCESS_KILL, struct.pack('<I', thread_id))
 		).is_ok()
 
 	async def use(self, db):
-		await self.execute_command(COMMAND.COM_INIT_DB, db)
+		await self._execute_command(COMMAND.COM_INIT_DB, db)
 
 	async def create_db(self, db):
 		try:
-			await self.execute_command(COMMAND.COM_QUERY, 'CREATE DATABASE {}'.format(db))
+			await self._execute_command(COMMAND.COM_QUERY, 'CREATE DATABASE {}'.format(db))
 		except MysqlError as e:
 			if e.error_no == ER.DB_CREATE_EXISTS:
 				return

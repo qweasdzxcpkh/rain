@@ -98,7 +98,7 @@ def _render_children(lst, cs):
 
 def _add_plocal_to_target(data, r):
 	if __plk__ in data:
-		_add_plocal_to_target(data.pop(__plk__), r)
+		_add_plocal_to_target(data[__plk__], r)
 
 	for k, v in data.items():
 		if k != __plk__ and k not in r:
@@ -545,13 +545,6 @@ class _ParseResult(object):
 
 				self._html[self.blocks[name]] = block
 
-			cache = []
-			for c in self._html:
-				if isinstance(c, _BlockOrder):
-					cache.append(str(c.render_()))
-				else:
-					cache.append(str(c))
-
 			return ''.join([(x.render_() if type(x) is _BlockOrder else x) for x in self._html])
 
 		self.base.ext = self
@@ -782,5 +775,6 @@ class Tpl(object):
 
 	def render(self, data, builtins=None):
 		self.pr.set_config('BUILTINS', builtins or {})
-
-		return self.pr.render(data)
+		_ = self.pr.render(data)
+		self.pr.locals = _Dict()
+		return _

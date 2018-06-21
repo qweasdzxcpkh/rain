@@ -10,6 +10,7 @@
     {% set qwer = 789 %}
     {# Spring #}
     {{ content }}---{{ time.strftime('%Y-%m-%d %H:%M:%S') }}--{{ str(qwer) }}
+    visit count: {{ visit_count }}
 
     {% set count = 5 %} {# will be rewrited in "items.html" #}
     {% include "items.html" %}

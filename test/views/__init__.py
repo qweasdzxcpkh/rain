@@ -1,5 +1,6 @@
 import asyncio
 
+from rain import g
 from rain.view import BaseView
 
 
@@ -7,11 +8,14 @@ class Home(BaseView):
 	async def get(self, **kwargs):
 		self.request.cookie.add('name', 'spring', max_age=600)
 
+		visit_count = await g.redis.incr('RC')
+
 		return self.render(
 			'main.html',
 			data=dict(
 				name='Name',
-				content='Hello World'
+				content='Hello World',
+				visit_count=visit_count
 			)
 		)
 
