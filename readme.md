@@ -5,7 +5,7 @@
 >
     /rain
     |
-    ---- app.py             class: <Rain>
+    ____ app.py             class: <Rain>
     |
     ____ clses.py           class: <Request>, <Response>, <Cookie>
     |
@@ -15,17 +15,17 @@
     |
     ____ h2tp.py            class: <HTTPProtocol>
     |
-    ---- router.py          class: <BaseRouter>   not use regexp
+    ____ router.py          class: <BaseRouter>   not use regexp
     |
-    ---- tpl.py             class: <Tpl>  a simple html template engine, just like Jinja2.
+    ____ tpl.py             class: <Tpl>  a simple html template engine, just like Jinja2.
     |
     ____ view.py            class: <BaseView> RESTful view class
     |
-    ---- /ext
+    ____ /ext
         |
-        ---- /mysql         a simple async mysql client
+        ____ /mysql         a simple async mysql client
         |
-        ---- /redis         a simple async redis client
+        ____ /redis         a simple async redis client
 
 # Rain
 >
