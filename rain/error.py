@@ -1,3 +1,4 @@
+from sys import stderr
 from traceback import print_exc
 
 from rain.utils import FakeTextFile
@@ -70,6 +71,11 @@ class UnsupportedMediaTypeError(HTTPError):
 	status = 415
 
 
+def _error_pretty(msg):
+	stderr.write(msg)
+	return '<pre style="font-family:  CURSIVE;">{}</pre>'.format(msg)
+
+
 class ServerError(HTTPError):
 	status = 500
 
@@ -82,7 +88,7 @@ class ServerError(HTTPError):
 	def make_response(self, **kwargs):
 		s, d, h = super().make_response(**kwargs)
 		if _imp_g().debug:
-			d = self.file.read()
+			d = _error_pretty(self.file.read())
 
 		return s, d, h
 
@@ -100,8 +106,10 @@ class TplError(HTTPError):
 	def make_response(self, **kwargs):
 		s, d, h = super().make_response(**kwargs)
 		if _imp_g().debug:
-			d = 'TplFileName: {}; LineNo: {}; Error: {}'.format(
-				self.file, self.lineno, self.error
+			d = _error_pretty(
+				'TplFileName: {}; LineNo: {}; Error: {}'.format(
+					self.file, self.lineno, self.error
+				)
 			)
 
 		return s, d, h

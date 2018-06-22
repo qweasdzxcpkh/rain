@@ -5,15 +5,7 @@ __project_path = os.path.dirname(os.getcwd())
 if __project_path not in sys.path:
 	sys.path.insert(0, __project_path)
 
-from rain import Rain, Request
-
-
-class _Req(Request):
-	def __init__(self):
-		super().__init__()
-
-
-Rain.request_cls = _Req
+from rain import Rain
 
 app = Rain(
 	view_paths=[
@@ -24,10 +16,12 @@ app = Rain(
 	],
 	port=8080,
 	debug=True,
-	mysql_host='192.168.55.15',
-	mysql_database='mysql',
-	mysql_user='root',
-	redis_db=1
+	# mysql_host='192.168.0.101',
+	# mysql_database='mysql',
+	# mysql_user='root',
+	# mysql_password='112233',
+	# redis_host='192.168.0.101',
+	# redis_db=1
 )
 
 

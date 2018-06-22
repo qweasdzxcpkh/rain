@@ -10,6 +10,10 @@ class Home(BaseView):
 
 		visit_count = await g.redis.incr('RC')
 
+		async with g.mysql.conn_ctx() as conn:
+			result = await conn.query('select User, Host from user')
+			print(result.rows)
+
 		return self.render(
 			'main.html',
 			data=dict(
