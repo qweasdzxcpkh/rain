@@ -13,14 +13,14 @@ from rain.ext.redis.cs4script import ScriptMix
 from rain.ext.redis.cs4set import SetMix
 from rain.ext.redis.cs4sortedset import SortedSetMix
 from rain.ext.redis.cs4string import StringMix
-from rain.ext.redis.cs4transaction import Transaction
+from rain.ext.redis.cs4transaction import TransactionMix
 
 
 class Redis(
 	GEOMix, HashMix, HyperLogLogMix,
 	KeyMix, ListMix, PubAndSubMix,
 	ScriptMix, SetMix, SortedSetMix,
-	StringMix, Transaction
+	StringMix, TransactionMix
 ):
 	def __init__(self, host='localhost', port=6379, db=0, password=None):
 		self.host = host
@@ -54,7 +54,7 @@ class Redis(
 
 	async def select(self, db):
 		if self._started:
-			raise RuntimeError('RedisClient is runing')
+			raise RuntimeError('RedisClient is running')
 
 		await self._send(b'SELECT', db)
 

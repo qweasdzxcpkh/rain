@@ -1,7 +1,7 @@
 from rain.ext.redis.base import BaseMix
 
 
-class Transaction(BaseMix):
+class TransactionMix(BaseMix):
 	async def discard(self):
 		return await self._send(b'DISCARD')
 

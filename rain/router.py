@@ -36,7 +36,7 @@ def _tab(x):
 
 
 class BaseRouter(object):
-	def __init__(self, view_paths, vmap_case='00', find_map_func=None):
+	def __init__(self, view_paths, find_map_func=None):
 		self.maps = {}
 		self.view_path = view_paths
 		self.find_map = find_map_func if callable(find_map_func) else lambda x: list(self.maps.values())[0]

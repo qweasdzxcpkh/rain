@@ -12,6 +12,9 @@ class FormData(dict):
 	def load(cls, string):
 		d = cls()
 
+		if not string:
+			return d
+
 		for k, *v in map(lambda x: x.split('='), string.split('&')):
 			v = unquote('='.join(v))
 			if k in d:
@@ -128,7 +131,7 @@ class FormFile(BytesIO):
 
 		self._ok = True
 
-	def set_m(self, method):
+	def set_hash_method(self, method):
 		pass
 
 
@@ -138,7 +141,7 @@ class HashFormFile(FormFile):
 
 		self._m = None
 
-	def set_m(self, method):
+	def set_hash_method(self, method):
 		self._m = getattr(hashlib, method)()
 
 	@property

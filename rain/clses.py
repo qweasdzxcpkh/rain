@@ -23,14 +23,16 @@ _real_none = object()
 
 
 class Cookie(dict):
+	__slots__ = ('appends', 'removes')
+
 	def __init__(self):
 		super().__init__()
-		self.a = None
-		self.r = None
+		self.appends = None
+		self.removes = None
 
 	def add(self, name, val, path='/', domain=None, max_age=0, secure=False, httponly=False):
-		if self.a is None:
-			self.a = {}
+		if self.appends is None:
+			self.appends = {}
 
 		_ = ['{}={}'.format(name, val), 'Path=' + path]
 		if domain:
@@ -45,20 +47,20 @@ class Cookie(dict):
 		if httponly:
 			_.append('HttpOnly')
 
-		self.a[name] = '; '.join(_)
+		self.appends[name] = '; '.join(_)
 
 	def remove(self, name):
-		if self.a and name in self.a:
-			del self.a[name]
+		if self.appends and name in self.appends:
+			del self.appends[name]
 			return
 
 		if name not in self:
 			return
 
-		if self.r is None:
-			self.r = {}
+		if self.removes is None:
+			self.removes = {}
 
-		self.r[name] = name + '=;Path=/;Expires=Thu, 01 Jan 1970 00:00:00 GMT'
+		self.removes[name] = name + '=;Path=/;Expires=Thu, 01 Jan 1970 00:00:00 GMT'
 
 	@classmethod
 	def load(cls, string):
@@ -99,10 +101,10 @@ def _mp_parse(lines, boundary, hash_method=''):
 				current_file.write_last_line()
 				file_list.append(current_file)
 				current_file = file_cls()
-				current_file.set_m(hash_method)
+				current_file.set_hash_method(hash_method)
 			else:
 				current_file = file_cls()
-				current_file.set_m(hash_method)
+				current_file.set_hash_method(hash_method)
 			continue
 
 		if in_file_description:
@@ -285,11 +287,11 @@ class Response(object):
 		_ += list(map(lambda item: '{}: {}'.format(*item), self.headers.items()))
 
 		if self.cookie is not None:
-			if self.cookie.a:
-				_ += list(map(lambda x: 'Set-Cookie: {}'.format(x), self.cookie.a.values()))
+			if self.cookie.appends:
+				_ += list(map(lambda x: 'Set-Cookie: {}'.format(x), self.cookie.appends.values()))
 
-			if self.cookie.r:
-				_ += list(map(lambda x: 'Set-Cookie: {}'.format(x), self.cookie.r.values()))
+			if self.cookie.removes:
+				_ += list(map(lambda x: 'Set-Cookie: {}'.format(x), self.cookie.removes.values()))
 
 		_ = list(map(lambda x: x.encode('latin1', 'ignore'), _))
 		_.append(b'')

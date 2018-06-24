@@ -48,7 +48,7 @@ class _OrderSign(object):
 		return str(self.index)
 
 
-class _Order(object):
+class _Order(object):  # 模板命令
 	__order__ = ''
 
 	def __init__(self, left, right=None):
@@ -56,7 +56,7 @@ class _Order(object):
 		self.right = right
 
 		self.txt = ''
-		self.pr = None
+		self.pr = None  # type: _ParseResult
 		self.begin_order = None
 
 		self.parent = None

@@ -5,10 +5,6 @@ from rain.utils.funcwrap import cachedproperty
 from rain.clses import Request
 from rain.error import BadRequestError, UnsupportedMediaTypeError, LengthRequiredError, EntityTooLargeError
 
-max_request_wait_length = 15  # s
-
-max_protocol_keep_alive_length = 15
-
 max_content_length = 3 * 1024 * 1024  # 3MB
 
 request_content_types = {
